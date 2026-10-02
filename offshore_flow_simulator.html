@@ -1,0 +1,749 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Flow Around Offshore Structures — CFD & Physics-Informed NN</title>
+<style>
+  :root {
+    --bg: #f4f8fb;
+    --panel: #ffffff;
+    --ink: #16222b;
+    --mute: #4c6272;
+    --line: #dce6ea;
+    --deep: #065a82;
+    --teal: #1c7293;
+    --mid: #21295c;
+    --navy: #0b1f33;
+    --accent-red: #b23a48;
+    --gold: #c68a1f;
+    --chip: #eef4f7;
+    --glow: rgba(6,90,130,0.35);
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    box-sizing: border-box;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #070f18;
+      --panel: #101c2b;
+      --ink: #e7eef3;
+      --mute: #9fb4c2;
+      --line: #223244;
+      --deep: #4db3e6;
+      --teal: #46c2c2;
+      --mid: #9db4ff;
+      --navy: #050c15;
+      --accent-red: #ef6b78;
+      --gold: #e8b559;
+      --chip: #17263a;
+      --glow: rgba(77,179,230,0.45);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #070f18; --panel: #101c2b; --ink: #e7eef3; --mute: #9fb4c2; --line: #223244;
+    --deep: #4db3e6; --teal: #46c2c2; --mid: #9db4ff; --navy: #050c15; --accent-red: #ef6b78;
+    --gold: #e8b559; --chip: #17263a; --glow: rgba(77,179,230,0.45);
+  }
+  html { scroll-padding-top: env(safe-area-inset-top, 0px); }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Calibri, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  header.top {
+    background: linear-gradient(135deg, var(--navy), var(--deep) 160%);
+    padding: 22px 20px 20px;
+  }
+  header.top .inner { max-width: 1140px; margin: 0 auto; }
+  header.top h1 {
+    font-family: Cambria, Georgia, serif;
+    font-size: clamp(20px, 3.2vw, 28px);
+    margin: 0 0 4px;
+    color: #ffffff;
+  }
+  header.top p.sub {
+    margin: 0 0 14px;
+    color: #cfe3ec;
+    font-size: 13.5px;
+  }
+  .question-banner {
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.18);
+    border-radius: 12px;
+    padding: 12px 16px;
+    color: #eaf3f7;
+    font-size: 14.5px;
+    line-height: 1.5;
+  }
+  .question-banner b { color: #ffffff; }
+
+  nav.tabs {
+    max-width: 1140px;
+    margin: 14px auto 0;
+    padding: 0 20px;
+    display: flex;
+    gap: 8px;
+  }
+  nav.tabs button {
+    flex: 1;
+    padding: 12px 10px;
+    border-radius: 12px 12px 0 0;
+    border: 1px solid var(--line);
+    border-bottom: none;
+    background: var(--chip);
+    color: var(--mute);
+    font-size: 14.5px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+  nav.tabs button.active { background: var(--panel); color: var(--deep); }
+  main { max-width: 1140px; margin: 0 auto; padding: 0 20px 40px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 0 12px 12px 12px; padding: 18px; }
+  .panel { display: none; }
+  .panel.active { display: block; }
+
+  /* ---- Simulator ---- */
+  .mode-switch {
+    display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap;
+  }
+  .mode-switch button {
+    flex: 1; min-width: 170px;
+    padding: 11px 12px; border-radius: 10px; border: 1.5px solid var(--line);
+    background: var(--chip); color: var(--ink); font-weight: 700; font-size: 13.5px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+  }
+  .mode-switch button.active { border-color: var(--deep); color: var(--deep); background: var(--panel); box-shadow: 0 0 0 3px var(--glow) inset; }
+  .mode-switch button .tag { font-size: 10.5px; padding: 1px 6px; border-radius: 999px; background: var(--deep); color: white; font-weight: 800; }
+  .mode-switch button.active .tag.pinn { background: #1e9e6b; }
+  .mode-switch button.active .tag.cfd { background: var(--accent-red); }
+
+  .sim-layout { display: grid; grid-template-columns: 1fr; gap: 16px; }
+  @media (min-width: 820px) { .sim-layout { grid-template-columns: 300px 1fr; } }
+  .controls { display: flex; flex-direction: column; gap: 14px; }
+  .control-group { background: var(--chip); border-radius: 10px; padding: 12px 14px; }
+  .control-group label { display: flex; justify-content: space-between; font-size: 13.5px; font-weight: 700; color: var(--ink); margin-bottom: 6px; }
+  .control-group label span.val { color: var(--deep); font-weight: 800; }
+  input[type="range"] { width: 100%; accent-color: var(--deep); }
+  .control-group p.hint { margin: 6px 0 0; font-size: 12px; color: var(--mute); line-height: 1.4; }
+  .seg { display: flex; border-radius: 8px; overflow: hidden; border: 1px solid var(--line); }
+  .seg button { flex: 1; padding: 8px 4px; border: none; background: var(--panel); color: var(--mute); font-size: 12px; font-weight: 700; cursor: pointer; }
+  .seg button.active { background: var(--deep); color: white; }
+
+  .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .stat { background: var(--chip); border-radius: 10px; padding: 10px 12px; position: relative; overflow: hidden; }
+  .stat .k { font-size: 10.5px; color: var(--mute); text-transform: uppercase; letter-spacing: 0.04em; }
+  .stat .v { font-size: 17px; font-weight: 800; color: var(--mid); margin-top: 2px; }
+  .stat.wide { grid-column: 1 / -1; }
+  .regime-badge { display: inline-block; padding: 6px 12px; border-radius: 999px; background: var(--deep); color: white; font-size: 12.5px; font-weight: 800; }
+  button.reset {
+    padding: 10px 14px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel);
+    color: var(--deep); font-weight: 800; font-size: 13.5px; cursor: pointer;
+  }
+
+  .canvas-wrap {
+    position: relative;
+    background: radial-gradient(circle at 30% 20%, var(--chip), var(--bg) 70%);
+    border-radius: 10px;
+    overflow: hidden;
+    border: 1px solid var(--line);
+  }
+  canvas { display: block; width: 100%; height: auto; }
+  .compute-overlay {
+    position: absolute; inset: 0;
+    background: rgba(11,31,51,0.72);
+    color: #eaf3f7;
+    display: none;
+    align-items: center; justify-content: center;
+    flex-direction: column;
+    gap: 10px;
+    font-size: 14px;
+    font-weight: 700;
+    text-align: center;
+  }
+  .compute-overlay.show { display: flex; }
+  .spinner {
+    width: 34px; height: 34px; border-radius: 50%;
+    border: 3px solid rgba(255,255,255,0.25); border-top-color: #fff;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .pinn-flash {
+    position: absolute; top: 10px; right: 10px;
+    background: #1e9e6b; color: white; font-size: 11.5px; font-weight: 800;
+    padding: 4px 10px; border-radius: 999px; opacity: 0; transition: opacity 0.25s ease;
+  }
+  .pinn-flash.show { opacity: 1; }
+
+  .force-row { display: flex; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
+  .force-card { flex: 1; min-width: 150px; background: var(--chip); border-radius: 10px; padding: 10px 12px; }
+  .force-card .k { font-size: 10.5px; color: var(--mute); text-transform: uppercase; letter-spacing: 0.04em; }
+  .force-card .v { font-size: 16px; font-weight: 800; color: var(--mid); }
+  .sparkline { width: 100%; height: 46px; display: block; margin-top: 4px; }
+
+  .sim-caption { font-size: 12px; color: var(--mute); margin-top: 10px; line-height: 1.55; }
+
+  /* ---- Explainer ---- */
+  .flow-steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 18px 0 6px; }
+  @media (max-width: 700px) { .flow-steps { grid-template-columns: 1fr 1fr; } }
+  .flow-step {
+    border-radius: 12px; padding: 14px 10px; text-align: center; color: white; font-size: 13px; font-weight: 700;
+    cursor: pointer; border: 2px solid transparent; transition: transform 0.15s ease;
+  }
+  .flow-step:hover { transform: translateY(-2px); }
+  .flow-step.active { border-color: var(--mid); }
+  .flow-step .n { display: block; font-size: 20px; margin-bottom: 4px; }
+  .step-detail { background: var(--chip); border-radius: 10px; padding: 14px 16px; font-size: 14px; line-height: 1.6; color: var(--ink); min-height: 70px; }
+  .explain-grid { display: grid; grid-template-columns: 1fr; gap: 18px; margin-top: 22px; }
+  @media (min-width: 760px) { .explain-grid { grid-template-columns: 1fr 1fr; } }
+  .explain-card h3 { margin: 0 0 8px; color: var(--mid); font-size: 16px; }
+  .explain-card p, .explain-card li { font-size: 14px; color: var(--ink); line-height: 1.6; }
+  .eq-box { background: var(--chip); border-radius: 10px; padding: 14px; text-align: center; font-size: 15px; color: var(--mid); font-style: italic; margin: 10px 0; }
+  svg.net text { font-family: -apple-system, Arial, sans-serif; }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="inner">
+    <h1>Physics-Informed Modelling of Flow Around Offshore Structures</h1>
+    <p class="sub">CFD simulation and neural-network approximation — interactive companion to the poster</p>
+    <div class="question-banner">
+      🎯 <b>Central question:</b> can a neural network, trained with the governing physics baked in, reproduce CFD-quality flow fields and loading around offshore structures — <b>fast enough for real-time design screening and digital-twin monitoring</b>? Switch modes below to compare the two approaches.
+    </div>
+  </div>
+</header>
+
+<nav class="tabs">
+  <button id="tabBtnSim" class="active">Interactive Flow Simulator</button>
+  <button id="tabBtnExplain">How It Works</button>
+</nav>
+
+<main>
+  <!-- ===================== SIMULATOR PANEL ===================== -->
+  <section id="panelSim" class="panel active card">
+
+    <div class="mode-switch">
+      <button id="modeCfd" class="active" data-mode="cfd">🌀 Full CFD <span class="tag cfd">re-solves the mesh</span></button>
+      <button id="modePinn" data-mode="pinn">⚡ PINN surrogate <span class="tag pinn">instant</span></button>
+    </div>
+
+    <div class="sim-layout">
+      <div class="controls">
+        <div class="control-group">
+          <label>Flow speed U<span id="uVal" class="val">1.0 m/s</span></label>
+          <input type="range" id="uRange" min="0.2" max="3.0" step="0.05" value="1.0" />
+          <p class="hint">Current / tidal inflow speed past the structure.</p>
+        </div>
+        <div class="control-group">
+          <label>Structure diameter D<span id="dVal" class="val">6.0 m</span></label>
+          <input type="range" id="dRange" min="2" max="12" step="0.5" value="6" />
+          <p class="hint">Monopile / pile cross-section diameter.</p>
+        </div>
+        <div class="control-group">
+          <label>Turbulence intensity<span id="tiVal" class="val">Medium</span></label>
+          <input type="range" id="tiRange" min="0" max="100" step="1" value="35" />
+          <p class="hint">Ambient current turbulence — roughens and de-regularises the wake.</p>
+        </div>
+        <div class="control-group">
+          <label style="margin-bottom:8px;">Structure cross-section</label>
+          <div class="seg">
+            <button class="active" data-shape="circle">Circular</button>
+            <button data-shape="square">Square (jacket)</button>
+          </div>
+          <p class="hint">Sharp-edged sections fix separation points, typically raising drag and wake unsteadiness.</p>
+        </div>
+        <div class="control-group">
+          <label style="margin-bottom:8px;">Visualisation</label>
+          <div class="seg">
+            <button class="active" data-viz="particles">Particles</button>
+            <button data-viz="pressure">Pressure</button>
+          </div>
+        </div>
+        <button class="reset" id="resetBtn">Reset particles</button>
+      </div>
+
+      <div>
+        <div class="canvas-wrap">
+          <canvas id="flowCanvas" width="1200" height="560"></canvas>
+          <div class="compute-overlay" id="computeOverlay">
+            <div class="spinner"></div>
+            <div>Re-meshing &amp; solving Navier–Stokes…</div>
+          </div>
+          <div class="pinn-flash" id="pinnFlash">⚡ instant inference</div>
+        </div>
+
+        <div class="stats" style="margin-top:12px;">
+          <div class="stat"><div class="k">Reynolds number</div><div class="v" id="reVal">—</div></div>
+          <div class="stat"><div class="k">Strouhal frequency</div><div class="v" id="stVal">—</div></div>
+          <div class="stat wide">
+            <div class="k">Wake regime</div>
+            <span class="regime-badge" id="regimeBadge">—</span>
+            <span id="regimeHint" style="font-size:12px;color:var(--mute);margin-left:8px;"></span>
+          </div>
+        </div>
+
+        <div class="force-row">
+          <div class="force-card">
+            <div class="k">Drag coefficient C_D</div>
+            <div class="v" id="cdVal">—</div>
+          </div>
+          <div class="force-card">
+            <div class="k">Lift coefficient C_L(t) — oscillating</div>
+            <div class="v" id="clVal">—</div>
+            <canvas id="sparkline" class="sparkline" width="600" height="80"></canvas>
+          </div>
+          <div class="force-card">
+            <div class="k">Wall-clock cost this update</div>
+            <div class="v" id="costVal">—</div>
+          </div>
+        </div>
+
+        <p class="sim-caption">Illustrative analytic model (potential flow + a schematic shedding-vortex train), not a solved CFD field — built to show how wake character, forces and update speed change with the controls. In <b>Full CFD</b> mode, every parameter change triggers a simulated "re-solve" delay, standing in for a real mesh/solver run; in <b>PINN surrogate</b> mode the same change applies instantly — the core trade-off this project targets. Re = UD/ν with seawater ν ≈ 1.05×10⁻⁶ m²/s; C_L(t) oscillates at the Strouhal frequency, driving the fatigue loading discussed on the poster.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== EXPLAINER PANEL ===================== -->
+  <section id="panelExplain" class="panel card">
+    <div class="question-banner" style="background:var(--chip);border-color:var(--line);color:var(--ink);margin-bottom:18px;">
+      🎯 <b style="color:var(--mid);">Central question:</b> can a physics-informed neural network match CFD-quality flow and load predictions around offshore structures, at a small fraction of the compute cost?
+    </div>
+    <h3 style="margin-top:0;color:var(--mid);">From CFD to a real-time surrogate</h3>
+    <p style="color:var(--mute);font-size:13.5px;margin-top:-6px;">Tap a step for details.</p>
+
+    <div class="flow-steps">
+      <div class="flow-step" style="background:var(--deep);" data-step="0"><span class="n">①</span>CFD simulations</div>
+      <div class="flow-step" style="background:var(--teal);" data-step="1"><span class="n">②</span>Training data</div>
+      <div class="flow-step" style="background:var(--deep);" data-step="2"><span class="n">③</span>Physics-informed training</div>
+      <div class="flow-step" style="background:var(--teal);" data-step="3"><span class="n">④</span>Fast flow surrogate</div>
+    </div>
+    <div class="step-detail" id="stepDetail"></div>
+
+    <div class="explain-grid">
+      <div class="explain-card">
+        <h3>The governing physics</h3>
+        <p>The flow is governed by the incompressible Navier–Stokes equations:</p>
+        <div class="eq-box">∇·u = 0<br/>∂u/∂t + (u·∇)u = −(1/ρ)∇p + ν∇²u</div>
+        <p>A conventional neural network would only fit CFD samples. A <b>physics-informed</b> network additionally forces its own predictions to satisfy these equations, using automatic differentiation to compute the residual at points where no CFD data exists.</p>
+      </div>
+      <div class="explain-card">
+        <h3>Network sketch</h3>
+        <svg class="net" viewBox="0 0 320 170" width="100%" height="170">
+          <g id="netLines"></g>
+          <g id="netNodes"></g>
+        </svg>
+        <p style="text-align:center;color:var(--mute);font-size:12px;margin-top:-4px;">Input (x, y, t) → hidden layers → output (u, v, p)</p>
+      </div>
+      <div class="explain-card">
+        <h3>Physics-informed loss</h3>
+        <div class="eq-box">L = λ₁ L_data + λ₂ L_physics + λ₃ L_boundary</div>
+        <ul>
+          <li><b>L_data</b> — mismatch against labelled CFD samples</li>
+          <li><b>L_physics</b> — how badly the network violates the Navier–Stokes residual at sampled collocation points</li>
+          <li><b>L_boundary</b> — mismatch against known wall / inlet / outlet conditions</li>
+        </ul>
+      </div>
+      <div class="explain-card">
+        <h3>Why it's useful here</h3>
+        <ul>
+          <li>Full CFD per design case: <b>hours</b>. Trained surrogate inference: <b>a fraction of a second</b> — try the mode switch on the Simulator tab.</li>
+          <li>Physics constraints mean fewer expensive CFD runs are needed to train a generalisable model.</li>
+          <li>Enables near real-time design screening and digital-twin monitoring of offshore structures.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script>
+(function () {
+  // ---------------- Tabs ----------------
+  const tabSim = document.getElementById('tabBtnSim');
+  const tabExplain = document.getElementById('tabBtnExplain');
+  const panelSim = document.getElementById('panelSim');
+  const panelExplain = document.getElementById('panelExplain');
+  tabSim.addEventListener('click', () => {
+    tabSim.classList.add('active'); tabExplain.classList.remove('active');
+    panelSim.classList.add('active'); panelExplain.classList.remove('active');
+  });
+  tabExplain.addEventListener('click', () => {
+    tabExplain.classList.add('active'); tabSim.classList.remove('active');
+    panelExplain.classList.add('active'); panelSim.classList.remove('active');
+  });
+
+  // ---------------- Explainer: workflow steps ----------------
+  const stepText = [
+    "A parameter sweep of CFD runs (RANS/LES) is solved across Reynolds numbers, structure diameters and inflow angles, producing high-fidelity velocity, pressure and force-coefficient fields.",
+    "Velocity/pressure snapshots become labelled training points; additional unlabelled \"collocation\" points are sampled throughout the domain purely to enforce the physics there.",
+    "The network is trained by minimising a combined loss: match the labelled CFD data, and satisfy the Navier–Stokes residual (via automatic differentiation) at the collocation points.",
+    "Once trained, the network predicts flow fields and loading for new geometries / conditions in milliseconds — enabling rapid design iteration or live digital-twin inference."
+  ];
+  const steps = document.querySelectorAll('.flow-step');
+  const stepDetail = document.getElementById('stepDetail');
+  function setStep(i) {
+    steps.forEach(s => s.classList.toggle('active', s.dataset.step == i));
+    stepDetail.textContent = stepText[i];
+  }
+  steps.forEach(s => s.addEventListener('click', () => setStep(s.dataset.step)));
+  setStep(0);
+
+  // ---------------- Explainer: network SVG ----------------
+  (function buildNet() {
+    const linesG = document.getElementById('netLines');
+    const nodesG = document.getElementById('netNodes');
+    const layers = [3, 5, 5, 3];
+    const labels = ["x,y,t", "", "", "u,v,p"];
+    const W = 320, H = 170, marginX = 30, top = 25, innerH = H - 55;
+    const dx = (W - 2 * marginX) / (layers.length - 1);
+    const positions = layers.map((n, li) => {
+      const xL = marginX + li * dx;
+      const arr = [];
+      for (let k = 0; k < n; k++) arr.push({ x: xL, y: top + (innerH / (n + 1)) * (k + 1) });
+      return arr;
+    });
+    const svgns = "http://www.w3.org/2000/svg";
+    for (let li = 0; li < layers.length - 1; li++) {
+      positions[li].forEach((p1, i1) => {
+        positions[li + 1].forEach((p2, i2) => {
+          if ((i1 + i2) % 2 === 0) {
+            const line = document.createElementNS(svgns, "line");
+            line.setAttribute("x1", p1.x); line.setAttribute("y1", p1.y);
+            line.setAttribute("x2", p2.x); line.setAttribute("y2", p2.y);
+            line.setAttribute("stroke", "var(--line)"); line.setAttribute("stroke-width", "0.75");
+            linesG.appendChild(line);
+          }
+        });
+      });
+    }
+    positions.forEach((layerNodes, li) => {
+      layerNodes.forEach((p) => {
+        const c = document.createElementNS(svgns, "circle");
+        c.setAttribute("cx", p.x); c.setAttribute("cy", p.y); c.setAttribute("r", 5);
+        c.setAttribute("fill", (li === 0 || li === layers.length - 1) ? "var(--mid)" : "var(--teal)");
+        c.setAttribute("stroke", "var(--panel)"); c.setAttribute("stroke-width", "1");
+        nodesG.appendChild(c);
+      });
+      if (labels[li]) {
+        const t = document.createElementNS(svgns, "text");
+        t.setAttribute("x", layerNodes[0].x); t.setAttribute("y", top - 8);
+        t.setAttribute("text-anchor", "middle"); t.setAttribute("font-size", "10");
+        t.setAttribute("fill", "var(--mid)"); t.setAttribute("font-weight", "700");
+        t.textContent = labels[li];
+        nodesG.appendChild(t);
+      }
+    });
+  })();
+
+  // ---------------- Simulator ----------------
+  const canvas = document.getElementById('flowCanvas');
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  const spark = document.getElementById('sparkline');
+  const sctx = spark.getContext('2d');
+
+  const uRange = document.getElementById('uRange');
+  const dRange = document.getElementById('dRange');
+  const tiRange = document.getElementById('tiRange');
+  const uVal = document.getElementById('uVal');
+  const dVal = document.getElementById('dVal');
+  const tiVal = document.getElementById('tiVal');
+  const reVal = document.getElementById('reVal');
+  const stVal = document.getElementById('stVal');
+  const cdVal = document.getElementById('cdVal');
+  const clVal = document.getElementById('clVal');
+  const costVal = document.getElementById('costVal');
+  const regimeBadge = document.getElementById('regimeBadge');
+  const regimeHint = document.getElementById('regimeHint');
+  const resetBtn = document.getElementById('resetBtn');
+  const modeCfd = document.getElementById('modeCfd');
+  const modePinn = document.getElementById('modePinn');
+  const computeOverlay = document.getElementById('computeOverlay');
+  const pinnFlash = document.getElementById('pinnFlash');
+
+  const NU = 1.05e-6; // seawater kinematic viscosity, m^2/s
+  const cylScreenX = W * 0.28, cylScreenY = H * 0.5;
+
+  let mode = 'cfd'; // 'cfd' | 'pinn'
+  let shape = 'circle';
+  let vizMode = 'particles';
+  let state = { U: 1.0, D: 6.0, TI: 35, Re: 0, St: 0, sheddingFreq: 0, Cd: 0 };
+  let pendingState = null;
+  let computeTimer = null;
+
+  function shapeFactor() { return shape === 'square' ? 1.35 : 1.0; }
+
+  function computeDerived(applyNow) {
+    const U = parseFloat(uRange.value);
+    const D = parseFloat(dRange.value);
+    const TI = parseFloat(tiRange.value);
+    const newState = { U, D, TI };
+    newState.Re = (U * D) / NU;
+    newState.St = 0.2;
+    newState.sheddingFreq = (newState.St * U) / D;
+    // schematic drag coefficient curve vs Re (loosely echoes the poster chart), plus shape factor
+    const logRe = Math.log10(Math.max(newState.Re, 10));
+    newState.Cd = (0.9 + 0.35 * Math.sin(logRe * 1.3) * Math.exp(-Math.max(0, logRe - 5) / 3)) * shapeFactor();
+
+    uVal.textContent = U.toFixed(2) + ' m/s';
+    dVal.textContent = D.toFixed(1) + ' m';
+    tiVal.textContent = TI < 20 ? 'Low' : (TI < 60 ? 'Medium' : 'High');
+
+    if (mode === 'pinn' || applyNow) {
+      applyState(newState);
+      if (mode === 'pinn') flashPinn();
+    } else {
+      pendingState = newState;
+      showComputeOverlay();
+    }
+  }
+
+  function applyState(s) {
+    state = s;
+    reVal.textContent = state.Re.toExponential(2);
+    stVal.textContent = state.sheddingFreq.toFixed(3) + ' Hz';
+    cdVal.textContent = state.Cd.toFixed(2);
+    let regime, hint, color;
+    if (state.Re < 4e5) { regime = 'Laminar-ish / early shedding'; color = 'var(--teal)'; hint = 'Weaker, more regular shedding at this Re.'; }
+    else if (state.Re < 3e6) { regime = 'Sub-critical vortex street'; color = 'var(--deep)'; hint = 'Classic Kármán vortex street, St ≈ 0.2.'; }
+    else { regime = 'Critical / turbulent wake'; color = 'var(--mid)'; hint = 'Narrower, more chaotic wake at very high Re.'; }
+    regimeBadge.textContent = regime; regimeBadge.style.background = color; regimeHint.textContent = hint;
+    costVal.textContent = mode === 'pinn' ? '≈ 0.4 s (inference)' : '≈ 5,400 s (full solve)*';
+  }
+
+  function showComputeOverlay() {
+    computeOverlay.classList.add('show');
+    if (computeTimer) clearTimeout(computeTimer);
+    computeTimer = setTimeout(() => {
+      computeOverlay.classList.remove('show');
+      if (pendingState) { applyState(pendingState); pendingState = null; }
+    }, 1200);
+  }
+  function flashPinn() {
+    pinnFlash.classList.add('show');
+    setTimeout(() => pinnFlash.classList.remove('show'), 500);
+  }
+
+  modeCfd.addEventListener('click', () => {
+    mode = 'cfd'; modeCfd.classList.add('active'); modePinn.classList.remove('active');
+    computeDerived(true);
+  });
+  modePinn.addEventListener('click', () => {
+    mode = 'pinn'; modePinn.classList.add('active'); modeCfd.classList.remove('active');
+    computeOverlay.classList.remove('show'); if (computeTimer) clearTimeout(computeTimer);
+    computeDerived(true);
+  });
+
+  document.querySelectorAll('.seg [data-shape]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.seg [data-shape]').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      shape = btn.dataset.shape;
+      computeDerived(mode === 'pinn');
+    });
+  });
+  document.querySelectorAll('.seg [data-viz]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.seg [data-viz]').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      vizMode = btn.dataset.viz;
+    });
+  });
+
+  function cylRadiusPx() { return 16 + (state.D - 2) * 2.2; }
+
+  function fieldVelocity(px, py, time) {
+    const dx0 = px - cylScreenX, dy0 = py - cylScreenY;
+    const r2 = dx0 * dx0 + dy0 * dy0;
+    const R_FLOW = 60 * (shape === 'square' ? 1.08 : 1.0);
+    const Rc2 = R_FLOW * R_FLOW;
+    const Uinf = 60 + state.U * 40;
+
+    let vx = Uinf, vy = 0;
+    if (r2 > Rc2 * 0.92) {
+      const factor = Rc2 / r2;
+      const cos2 = (dx0 * dx0 - dy0 * dy0) / r2;
+      const sin2 = (2 * dx0 * dy0) / r2;
+      vx += Uinf * (-factor * cos2);
+      vy += Uinf * (-factor * sin2);
+    } else { vx = 0; vy = 0; }
+
+    const freqVisual = (0.4 + state.sheddingFreq * 250) * shapeFactor();
+    const spacing = 46;
+    const nVort = 7;
+    const tiFactor = 0.4 + (state.TI / 100) * 1.4;
+    for (let i = 0; i < nVort; i++) {
+      const phase = time * freqVisual - i * 0.9;
+      const xv = cylScreenX + R_FLOW * 1.15 + i * spacing;
+      const sign = (i % 2 === 0) ? 1 : -1;
+      const ampBase = (24 + Math.min(28, state.Re / 3e5)) * (0.8 + tiFactor * 0.3) * shapeFactor();
+      const yv = cylScreenY + sign * ampBase * Math.sin(0.5 * phase + i);
+      const strength = (2200 * Math.exp(-i * 0.18)) * sign * shapeFactor();
+      const ddx = px - xv, ddy = py - yv;
+      const rr2 = ddx * ddx + ddy * ddy + 120;
+      vx += (-strength * ddy) / rr2;
+      vy += (strength * ddx) / rr2;
+    }
+    // turbulence jitter
+    const jitter = (state.TI / 100) * 14;
+    vx += (Math.random() - 0.5) * jitter;
+    vy += (Math.random() - 0.5) * jitter;
+    return [vx, vy];
+  }
+
+  const N_PARTICLES = 460;
+  let particles = [];
+  function resetParticles() {
+    particles = [];
+    for (let i = 0; i < N_PARTICLES; i++) {
+      particles.push({ x: Math.random() * W, y: H * 0.15 + Math.random() * H * 0.7, life: Math.random() * 100, trail: [], spd: 0 });
+    }
+  }
+  resetParticles();
+  resetBtn.addEventListener('click', resetParticles);
+
+  // lift coefficient time history for sparkline
+  let clHistory = [];
+  let tClock = 0;
+
+  function step(dt) {
+    tClock += dt;
+    const cylR = cylRadiusPx();
+    let maxSpd = 1;
+    for (const p of particles) {
+      const [vx, vy] = fieldVelocity(p.x, p.y, tClock);
+      p.x += vx * dt * 0.35;
+      p.y += vy * dt * 0.35;
+      p.spd = Math.hypot(vx, vy);
+      maxSpd = Math.max(maxSpd, p.spd);
+      p.trail.push({ x: p.x, y: p.y });
+      if (p.trail.length > 14) p.trail.shift();
+      p.life -= dt * 12;
+      const dxc = p.x - cylScreenX, dyc = p.y - cylScreenY;
+      const insideCyl = (dxc * dxc + dyc * dyc) < (cylR + 3) * (cylR + 3);
+      if (p.x > W + 10 || p.life <= 0 || insideCyl || p.x < -10 || p.y < -10 || p.y > H + 10) {
+        p.x = -Math.random() * 40; p.y = H * 0.1 + Math.random() * H * 0.8;
+        p.life = 260 + Math.random() * 120; p.trail = [];
+      }
+    }
+    // lift coefficient: oscillates at shedding frequency, amplitude grows with Re/turbulence
+    const freqVisual = (0.4 + state.sheddingFreq * 250) * shapeFactor();
+    const amp = 0.6 + Math.min(0.7, state.Re / 4e6) + (state.TI / 100) * 0.25;
+    const cl = amp * Math.sin(tClock * freqVisual * 0.5);
+    clVal.textContent = cl.toFixed(2);
+    clHistory.push(cl);
+    if (clHistory.length > 220) clHistory.shift();
+    return maxSpd;
+  }
+
+  function drawSparkline() {
+    sctx.clearRect(0, 0, spark.width, spark.height);
+    if (clHistory.length < 2) return;
+    const isDark = getComputedStyle(document.documentElement).getPropertyValue('--panel').trim().startsWith('#10');
+    sctx.strokeStyle = isDark ? '#46c2c2' : '#065a82';
+    sctx.lineWidth = 2;
+    sctx.beginPath();
+    const n = clHistory.length;
+    for (let i = 0; i < n; i++) {
+      const x = (i / (n - 1)) * spark.width;
+      const y = spark.height / 2 - clHistory[i] * (spark.height / 2.4);
+      if (i === 0) sctx.moveTo(x, y); else sctx.lineTo(x, y);
+    }
+    sctx.stroke();
+    sctx.strokeStyle = isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.1)';
+    sctx.lineWidth = 1;
+    sctx.beginPath(); sctx.moveTo(0, spark.height / 2); sctx.lineTo(spark.width, spark.height / 2); sctx.stroke();
+  }
+
+  function drawCylinderShape(cylR, isDark) {
+    ctx.beginPath();
+    if (shape === 'square') {
+      const s = cylR * 1.7;
+      ctx.moveTo(cylScreenX - s / 2, cylScreenY - s / 2);
+      ctx.lineTo(cylScreenX + s / 2, cylScreenY - s / 2);
+      ctx.lineTo(cylScreenX + s / 2, cylScreenY + s / 2);
+      ctx.lineTo(cylScreenX - s / 2, cylScreenY + s / 2);
+      ctx.closePath();
+    } else {
+      ctx.arc(cylScreenX, cylScreenY, cylR, 0, Math.PI * 2);
+    }
+    ctx.fillStyle = isDark ? '#050c15' : '#0b1f33';
+    ctx.strokeStyle = isDark ? '#e7eef3' : '#ffffff';
+    ctx.lineWidth = 2;
+    ctx.fill(); ctx.stroke();
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, W, H);
+    const isDark = getComputedStyle(document.documentElement).getPropertyValue('--panel').trim().startsWith('#10');
+
+    if (vizMode === 'pressure') {
+      // schematic pressure blobs behind the cylinder (low pressure core of each shed vortex)
+      const freqVisual = (0.4 + state.sheddingFreq * 250) * shapeFactor();
+      const spacing = 46;
+      for (let i = 0; i < 7; i++) {
+        const phase = tClock * freqVisual - i * 0.9;
+        const xv = cylScreenX + 60 * 1.15 + i * spacing;
+        const sign = (i % 2 === 0) ? 1 : -1;
+        const ampBase = (24 + Math.min(28, state.Re / 3e5)) * shapeFactor();
+        const yv = cylScreenY + sign * ampBase * Math.sin(0.5 * phase + i);
+        const rad = 26 * Math.exp(-i * 0.12);
+        const grad = ctx.createRadialGradient(xv, yv, 0, xv, yv, rad);
+        const c = sign > 0 ? (isDark ? '77,179,230' : '6,90,130') : (isDark ? '239,107,120' : '178,58,72');
+        grad.addColorStop(0, `rgba(${c},0.55)`);
+        grad.addColorStop(1, `rgba(${c},0)`);
+        ctx.fillStyle = grad;
+        ctx.beginPath(); ctx.arc(xv, yv, rad, 0, Math.PI * 2); ctx.fill();
+      }
+    } else {
+      ctx.strokeStyle = isDark ? 'rgba(70,194,194,0.55)' : 'rgba(6,90,130,0.45)';
+      ctx.lineWidth = 1.4;
+      for (const p of particles) {
+        if (p.trail.length < 2) continue;
+        const speedT = Math.min(1, p.spd / 140);
+        const isDarkLocal = isDark;
+        const col = isDarkLocal
+          ? `rgba(${Math.round(70 + speedT * 150)},${Math.round(194 - speedT * 40)},${Math.round(194 - speedT * 60)},0.6)`
+          : `rgba(${Math.round(6 + speedT * 170)},${Math.round(90 + speedT * 30)},${Math.round(130 - speedT * 60)},0.55)`;
+        ctx.strokeStyle = col;
+        ctx.beginPath();
+        ctx.moveTo(p.trail[0].x, p.trail[0].y);
+        for (let i = 1; i < p.trail.length; i++) ctx.lineTo(p.trail[i].x, p.trail[i].y);
+        ctx.stroke();
+      }
+    }
+
+    ctx.fillStyle = isDark ? '#46c2c2' : '#1c7293';
+    for (let i = 0; i < 6; i++) {
+      const yy = H * 0.15 + i * (H * 0.7 / 5);
+      ctx.beginPath();
+      ctx.moveTo(24, yy); ctx.lineTo(56, yy);
+      ctx.lineTo(50, yy - 5); ctx.moveTo(56, yy); ctx.lineTo(50, yy + 5);
+      ctx.stroke();
+    }
+
+    drawCylinderShape(cylRadiusPx(), isDark);
+  }
+
+  let lastT = null;
+  function frame(ts) {
+    if (lastT == null) lastT = ts;
+    const dt = Math.min(0.05, (ts - lastT) / 1000);
+    lastT = ts;
+    step(dt);
+    draw();
+    drawSparkline();
+    requestAnimationFrame(frame);
+  }
+
+  uRange.addEventListener('input', () => computeDerived(false));
+  dRange.addEventListener('input', () => computeDerived(false));
+  tiRange.addEventListener('input', () => computeDerived(false));
+  computeDerived(true);
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

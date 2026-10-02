@@ -1,0 +1,721 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Protein Folding — The Physics</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/ngl@2.4.0/dist/ngl.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  :root{
+    --bg: #0b0f16;
+    --panel: #121826;
+    --panel-edge: #1f2836;
+    --grid: #232c3b;
+    --text: #e8edf4;
+    --text-dim: #8a97ab;
+    --teal: #4fd1c5;
+    --amber: #f0a868;
+    --crimson: #e5555c;
+    --accent: #4fd1c5;
+    --accent-dim: rgba(79,209,197,0.15);
+  }
+  *{ box-sizing: border-box; }
+  html,body{ margin:0; padding:0; height:100%; background:var(--bg); color:var(--text); font-family:'Inter',sans-serif; overflow:hidden; }
+  .app{ display:flex; flex-direction:column; height:100vh; transition: background .4s ease; }
+  .app.disease-mode{ --accent:#e5555c; --accent-dim: rgba(229,85,92,0.15); }
+
+  header{
+    padding: 10px 22px; border-bottom:1px solid var(--panel-edge);
+    background: linear-gradient(180deg, #0d1320, #0b0f16); flex-shrink:0;
+  }
+  header .top{ display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; }
+  header .title h1{ font-family:'Space Grotesk', sans-serif; font-size:16px; font-weight:600; margin:0; letter-spacing:0.2px; }
+  header .title span{ font-size:11px; color:var(--text-dim); font-family:'IBM Plex Mono',monospace; }
+  header .badge{
+    font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--accent);
+    border:1px solid var(--accent); padding:5px 10px; border-radius:20px; background: var(--accent-dim);
+    white-space:nowrap; transition: all .3s ease;
+  }
+
+  .category-tabs{ display:flex; gap:6px; margin-bottom:9px; }
+  .cat-tab{
+    font-family:'IBM Plex Mono',monospace; font-size:11px; font-weight:600; padding:7px 14px;
+    border-radius:20px; border:1px solid var(--panel-edge); background:transparent; color:var(--text-dim);
+    cursor:pointer; transition: all .2s ease; letter-spacing:0.3px;
+  }
+  .cat-tab:hover{ color:var(--text); }
+  .cat-tab.active{ background:var(--text); color:var(--bg); border-color:var(--text); }
+  .cat-tab.active.disease{ background:var(--crimson); color:#fff; border-color:var(--crimson); }
+
+  .protein-picker{ display:flex; gap:8px; overflow-x:auto; padding-bottom:2px; }
+  .protein-picker::-webkit-scrollbar{ height:5px; }
+  .protein-picker::-webkit-scrollbar-thumb{ background:var(--panel-edge); border-radius:3px; }
+  .chip{
+    flex-shrink:0; font-family:'IBM Plex Mono',monospace; font-size:11.5px; padding:8px 13px;
+    border-radius:7px; border:1px solid var(--panel-edge); background:var(--panel); color:var(--text-dim);
+    cursor:pointer; transition: all .15s ease; white-space:nowrap;
+  }
+  .chip:hover{ color:var(--text); border-color:#33405a; }
+  .chip.active{ color:#0b0f16; background:var(--accent); border-color:var(--accent); font-weight:600; }
+
+  main{ flex:1; display:flex; min-height:0; }
+  .viewer-pane{ flex: 1.4; display:flex; flex-direction:column; border-right:1px solid var(--panel-edge); min-width:0; }
+  #viewport{ flex:1; position:relative; background: radial-gradient(circle at 50% 40%, #101725 0%, #0a0e15 75%); transition: box-shadow .4s ease; }
+  #viewport .hint{ position:absolute; bottom:12px; left:14px; font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:var(--text-dim); pointer-events:none; }
+  #viewport .loading{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center; flex-direction:column; gap:10px; font-family:'IBM Plex Mono',monospace; font-size:12px; color:var(--text-dim); background:#0a0e15; z-index:5; }
+  .spinner{ width:22px; height:22px; border-radius:50%; border:2px solid var(--grid); border-top-color:var(--accent); animation:spin 0.9s linear infinite; }
+  @keyframes spin{ to{ transform: rotate(360deg); } }
+
+  .subtitle-bar{ padding:7px 20px; font-size:11.5px; color:var(--text-dim); font-family:'IBM Plex Mono',monospace; border-top:1px solid var(--panel-edge); background:#0d1320; }
+  .subtitle-bar strong{ color:var(--accent); font-weight:600; }
+
+  .timeline{ padding: 12px 20px 16px; background:#0d1320; }
+  .timeline .track{ position:relative; height:3px; background:var(--grid); border-radius:2px; margin: 24px 6px 12px; }
+  .timeline .fill{ position:absolute; top:0; left:0; height:100%; background:var(--accent); border-radius:2px; transition: width .5s ease, background .4s ease; }
+  .timeline .stops{ position:absolute; top:50%; left:0; right:0; display:flex; justify-content:space-between; transform:translateY(-50%); }
+  .stop{ width:15px; height:15px; border-radius:50%; background:var(--panel); border:2px solid var(--grid); cursor:pointer; transition: all .25s ease; position:relative; }
+  .stop.active{ border-color: var(--accent); background:var(--accent); box-shadow:0 0 0 5px var(--accent-dim); }
+  .stop.done{ border-color: var(--accent); background:transparent; }
+  .stop label{ position:absolute; top:-24px; left:50%; transform:translateX(-50%); white-space:nowrap; font-family:'IBM Plex Mono',monospace; font-size:10px; color:var(--text-dim); cursor:pointer; }
+  .stop.active label{ color:var(--accent); }
+
+  .controls{ display:flex; align-items:center; justify-content:space-between; gap:12px; }
+  .stage-desc{ flex:1; animation: fadeIn .35s ease; }
+  .stage-desc h2{ font-family:'Space Grotesk',sans-serif; font-size:15px; margin:0 0 3px; }
+  .stage-desc p{ margin:0; font-size:12.5px; color:var(--text-dim); line-height:1.5; max-width:560px; }
+  .btns{ display:flex; gap:8px; flex-shrink:0; }
+  button{ font-family:'IBM Plex Mono',monospace; font-size:12px; background:var(--panel); border:1px solid var(--panel-edge); color:var(--text); padding:9px 14px; border-radius:6px; cursor:pointer; transition: all .15s ease; }
+  button:hover{ border-color:var(--accent); color:var(--accent); }
+  button:disabled{ opacity:0.3; cursor:not-allowed; }
+  button.primary{ background: var(--accent-dim); border-color: var(--accent); color:var(--accent); }
+
+  .data-pane{ flex:1; display:flex; flex-direction:column; background:#0c1119; min-width:340px; overflow-y:auto; }
+  .data-pane::-webkit-scrollbar{ width:8px; }
+  .data-pane::-webkit-scrollbar-thumb{ background:var(--panel-edge); border-radius:4px; }
+  .section{ padding: 16px 22px; border-bottom:1px solid var(--panel-edge); animation: fadeIn .4s ease; }
+  .section h3{ font-family:'Space Grotesk',sans-serif; font-size:11.5px; text-transform:uppercase; letter-spacing:1.2px; color:var(--text-dim); margin:0 0 12px; }
+
+  .about-box{ font-size:12.5px; line-height:1.6; color:#c3cbd8; }
+  .about-box .disease-tag{
+    display:inline-block; font-family:'IBM Plex Mono',monospace; font-size:10.5px; font-weight:600;
+    color:var(--crimson); border:1px solid rgba(229,85,92,0.4); background:rgba(229,85,92,0.08);
+    padding:3px 9px; border-radius:20px; margin-bottom:8px; letter-spacing:0.3px;
+  }
+
+  .readouts{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .readout{ background:var(--panel); border:1px solid var(--panel-edge); border-radius:8px; padding:12px 14px; }
+  .readout .label{ font-size:10.5px; color:var(--text-dim); font-family:'IBM Plex Mono',monospace; margin-bottom:6px; }
+  .readout .value{ font-family:'IBM Plex Mono',monospace; font-size:19px; font-weight:600; transition: color .3s ease; }
+  .readout.dg .value{ color:var(--amber); text-shadow:0 0 14px rgba(240,168,104,0.25); }
+  .readout.dh .value{ color:var(--accent); }
+  .readout.ds .value{ color:#a6c3ff; }
+  .readout.t .value{ color:var(--text); }
+  .readout .unit{ font-size:11px; color:var(--text-dim); font-weight:400; }
+  canvas#chart{ width:100% !important; height:150px !important; }
+  .notes{ font-size:12.5px; line-height:1.65; color:#c3cbd8; }
+  .notes strong{ color:var(--text); }
+  .notes ul{ margin:8px 0 0; padding-left:18px; }
+  .notes li{ margin-bottom:6px; }
+  .caveat{ font-size:11px; color:var(--text-dim); font-style:italic; line-height:1.6; border-left:2px solid var(--panel-edge); padding-left:10px; margin-top:14px; }
+
+  @keyframes fadeIn{ from{ opacity:0; transform:translateY(4px); } to{ opacity:1; transform:translateY(0); } }
+
+  @media (max-width: 880px){
+    main{ flex-direction:column; }
+    .viewer-pane{ border-right:none; border-bottom:1px solid var(--panel-edge); flex:1.1; }
+    .data-pane{ min-width:0; }
+  }
+</style>
+</head>
+<body>
+
+<div class="app" id="app">
+  <header>
+    <div class="top">
+      <div class="title">
+        <h1 id="pageTitle">Protein Folding — The Physics</h1>
+        <span id="pdbTag">PDB — · live structure via RCSB</span>
+      </div>
+      <div class="badge" id="stageCountBadge">4 STAGES</div>
+    </div>
+    <div class="category-tabs" id="categoryTabs"></div>
+    <div class="protein-picker" id="proteinPicker"></div>
+  </header>
+
+  <main>
+    <section class="viewer-pane">
+      <div id="viewport">
+        <div class="loading" id="loadingMsg"><div class="spinner"></div>Loading structure from RCSB…</div>
+        <div class="hint">drag to rotate · scroll to zoom</div>
+      </div>
+      <div class="subtitle-bar" id="proteinSubtitle"></div>
+      <div class="timeline">
+        <div class="controls" style="margin-bottom:4px;">
+          <div class="stage-desc" id="stageDescWrap">
+            <h2 id="stageTitle">—</h2>
+            <p id="stageText">—</p>
+          </div>
+          <div class="btns">
+            <button id="prevBtn">← Prev</button>
+            <button id="playBtn" class="primary">▶ Play</button>
+            <button id="nextBtn">Next →</button>
+          </div>
+        </div>
+        <div class="track">
+          <div class="fill" id="fill"></div>
+          <div class="stops" id="stops"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="data-pane">
+      <div class="section">
+        <h3>About This Protein</h3>
+        <div class="about-box" id="aboutBox"></div>
+      </div>
+      <div class="section">
+        <h3>Thermodynamic Readout</h3>
+        <div class="readouts">
+          <div class="readout dg"><div class="label">ΔG (Gibbs free energy)</div><div class="value" id="dgVal">0.0</div><div class="unit">kcal/mol</div></div>
+          <div class="readout dh"><div class="label">ΔH (enthalpy)</div><div class="value" id="dhVal">0.0</div><div class="unit">kcal/mol</div></div>
+          <div class="readout ds"><div class="label">TΔS (entropy term)</div><div class="value" id="dsVal">0.0</div><div class="unit">kcal/mol</div></div>
+          <div class="readout t"><div class="label">Temperature</div><div class="value">298</div><div class="unit">K (25°C)</div></div>
+        </div>
+      </div>
+      <div class="section">
+        <h3 id="chartHeading">ΔG across folding stages</h3>
+        <canvas id="chart"></canvas>
+      </div>
+      <div class="section" style="flex:1;">
+        <h3 id="physicsHeading">What's happening physically</h3>
+        <div class="notes" id="physicsNotes"></div>
+        <div class="caveat" id="caveatBox"></div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script>
+// ======================================================================
+// PROTEIN + STAGE DEFINITIONS
+// ======================================================================
+const PROTEINS = {
+
+  hemoglobin: {
+    name: "Hemoglobin", category: "normal", pdbId: "4hhb",
+    subtitle: "O₂-transport tetramer — 4 chains (2α + 2β), cooperative binding, PDB 4HHB",
+    about: "Carries oxygen from your lungs to every tissue in the body — roughly 270 million copies pack into a single red blood cell. Its four-subunit, cooperative binding mechanism (the T ↔ R transition) is one of the most thoroughly studied stories in biochemistry.",
+    stages: [
+      { key:"primary", label:"Primary", title:"Stage 1 — Primary Structure",
+        text:"The polypeptide chain of one subunit (chain A): amino acids joined by peptide bonds, no stable 3-D shape yet.",
+        dg:0.0, dh:0.0, ds:0.0, heading:"What's happening physically",
+        notes:`<strong>Reference (unfolded) state</strong> — by convention ΔG = 0 here.<ul><li>High conformational entropy: the chain samples many shapes.</li><li>No systematic hydrogen bonding along the backbone yet.</li></ul>`,
+        reps:[{type:"tube", sele:":A", color:"residueindex", radius:0.35}] },
+      { key:"secondary", label:"Secondary", title:"Stage 2 — Secondary Structure",
+        text:"Local backbone segments fold into α-helices and β-sheets, stabilised by backbone H-bonds. Magenta = helix, yellow = sheet.",
+        dg:-1.5, dh:-28, ds:-26.5, heading:"What's happening physically",
+        notes:`<strong>Backbone hydrogen bonding begins.</strong><ul><li>ΔH drops as H-bonds form.</li><li>Ordering the chain costs entropy — the two nearly cancel, so ΔG barely moves yet (enthalpy-entropy compensation).</li></ul>`,
+        reps:[{type:"cartoon", sele:":A", color:"sstruc"}] },
+      { key:"tertiary", label:"Tertiary", title:"Stage 3 — Tertiary Structure",
+        text:"The subunit collapses into its compact 3-D fold. Hydrophobic residues (pale spheres) bury into the core, away from water.",
+        dg:-8.5, dh:-45, ds:-36.5, heading:"What's happening physically",
+        notes:`<strong>The hydrophobic effect does most of the work.</strong><ul><li>Burying nonpolar side chains releases ordered water back into bulk solvent — net entropy actually increases.</li><li>ΔG turns clearly negative: the fold is now favoured. Matches the typical 5–15 kcal/mol stability window for globular proteins.</li></ul>`,
+        reps:[{type:"cartoon", sele:":A", color:"#4fd1c5"},{type:"spacefill", sele:":A and hydrophobic", color:"#f0a868", opacity:0.35, radius:1.1}] },
+      { key:"quaternary", label:"Quaternary", title:"Stage 4 — Quaternary Structure",
+        text:"All four subunits (2α + 2β) assemble. Each cradles a heme group (licorice) with an iron atom that binds O₂.",
+        dg:-13.0, dh:-58, ds:-45.0, heading:"What's happening physically",
+        notes:`<strong>Subunit interfaces add final stabilisation — and enable cooperativity.</strong><ul><li>New salt bridges and H-bonds form across subunit interfaces.</li><li>Binding O₂ at one heme shifts the whole tetramer between low-affinity "T" and high-affinity "R" states — the basis of the sigmoidal O₂ curve and the Bohr effect.</li></ul>`,
+        reps:[{type:"cartoon", sele:"polymer", color:"chainname"},{type:"licorice", sele:"hetero and not water", color:"element"}] }
+    ]
+  },
+
+  myoglobin: {
+    name: "Myoglobin", category: "normal", pdbId: "1mbo",
+    subtitle: "O₂-storage monomer in muscle — single chain, single heme, PDB 1MBO",
+    about: "Stores oxygen inside muscle cells for quick access during exertion — it's what makes red meat red. Myoglobin was the very first protein structure ever solved, by John Kendrew in 1958, earning a Nobel Prize.",
+    stages: [
+      { key:"primary", label:"Primary", title:"Stage 1 — Primary Structure",
+        text:"A single 153-residue chain — myoglobin was the first protein structure ever solved (Kendrew, 1958).",
+        dg:0.0, dh:0.0, ds:0.0, heading:"What's happening physically",
+        notes:`<strong>Reference (unfolded) state.</strong><ul><li>One polypeptide, no bound partners — unlike hemoglobin, myoglobin never forms a multi-chain complex.</li></ul>`,
+        reps:[{type:"tube", sele:"polymer", color:"residueindex", radius:0.35}] },
+      { key:"secondary", label:"Secondary", title:"Stage 2 — Secondary Structure",
+        text:"Almost entirely α-helical — myoglobin has 8 helices (named A–H) and essentially no β-sheet.",
+        dg:-2.0, dh:-30, ds:-28.0, heading:"What's happening physically",
+        notes:`<strong>Helix-dominated fold.</strong><ul><li>All-helix proteins like this rely heavily on backbone H-bonding within each helix before packing occurs.</li></ul>`,
+        reps:[{type:"cartoon", sele:"polymer", color:"sstruc"}] },
+      { key:"tertiary", label:"Tertiary", title:"Stage 3 — Tertiary Structure",
+        text:"The 8 helices pack into a compact globin fold that creates a hydrophobic pocket for the heme group (licorice), shown at right.",
+        dg:-10.5, dh:-42, ds:-31.5, heading:"What's happening physically",
+        notes:`<strong>Hydrophobic collapse builds the heme pocket.</strong><ul><li>The heme is held mostly by non-covalent (hydrophobic + one coordinate bond to a histidine) contacts, not covalent attachment.</li><li>Apomyoglobin (no heme) is measurably less stable than holomyoglobin (with heme) — cofactor binding adds real stability, a nice contrast to hemoglobin where stability also comes from quaternary contacts.</li></ul>`,
+        reps:[{type:"cartoon", sele:"polymer", color:"#4fd1c5"},{type:"spacefill", sele:"polymer and hydrophobic", color:"#f0a868", opacity:0.3, radius:1.0},{type:"licorice", sele:"hetero and not water", color:"element"}] }
+    ]
+  },
+
+  insulin: {
+    name: "Insulin", category: "normal", pdbId: "4ins",
+    subtitle: "Hormone — 2 disulfide-linked chains (A+B), stored as a Zn²⁺ hexamer, PDB 4INS",
+    about: "Signals cells to absorb glucose from the blood. Its purification in 1921–22 (Banting, Best, Collip, Macleod) was one of the first uses of a purified protein as a medicine, turning type 1 diabetes from a death sentence into a manageable condition.",
+    stages: [
+      { key:"primary", label:"Primary", title:"Stage 1 — Primary Structure",
+        text:"The B chain (30 residues) shown as a backbone trace — insulin's A chain (21 residues) is separate and only joins later via disulfide bonds.",
+        dg:0.0, dh:0.0, ds:0.0, heading:"What's happening physically",
+        notes:`<strong>Two separate chains, unfolded.</strong><ul><li>Unusually, insulin's mature form already requires two polypeptides — most proteins reach a functional fold with just one chain.</li></ul>`,
+        reps:[{type:"tube", sele:":B", color:"residueindex", radius:0.35}] },
+      { key:"secondary", label:"Secondary", title:"Stage 2 — Secondary Structure",
+        text:"Short α-helical segments form in both the A and B chains.",
+        dg:-1.0, dh:-16, ds:-15.0, heading:"What's happening physically",
+        notes:`<strong>Local helix formation in each chain independently.</strong><ul><li>At this point the chains are still not covalently linked to each other.</li></ul>`,
+        reps:[{type:"cartoon", sele:":A or :B", color:"sstruc"}] },
+      { key:"tertiary", label:"Tertiary", title:"Stage 3 — Tertiary/Disulfide-Linked Monomer",
+        text:"The A and B chains associate and lock together via disulfide bonds (cysteines highlighted in yellow). This is insulin's biologically active form.",
+        dg:-6.5, dh:-30, ds:-23.5, heading:"What's happening physically",
+        notes:`<strong>Covalent cross-links, not just folding.</strong><ul><li>Disulfide bonds (S–S, covalent, ~60 kcal/mol each) are a different stabilisation mechanism than the non-covalent forces (H-bonds, hydrophobic packing) that dominate most folding.</li><li>This is why insulin can stay correctly assembled even though it's technically two separate polypeptide chains.</li></ul>`,
+        reps:[{type:"cartoon", sele:":A or :B", color:"#4fd1c5"},{type:"licorice", sele:"(:A or :B) and cys", color:"yellow"}] },
+      { key:"quaternary", label:"Quaternary", title:"Stage 4 — Quaternary Structure (Zn Hexamer)",
+        text:"Six A+B monomers assemble around 2 zinc ions (spacefill) — insulin's storage form in the pancreas, before it's released as active monomer/dimer.",
+        dg:-9.0, dh:-38, ds:-29.0, heading:"What's happening physically",
+        notes:`<strong>Metal-coordinated quaternary assembly.</strong><ul><li>Zn²⁺ ions coordinate histidine residues from three monomers at once, nucleating hexamer formation.</li><li>This is a completely different assembly mechanism from hemoglobin's — driven by metal coordination chemistry rather than hydrophobic subunit interfaces.</li></ul>`,
+        reps:[{type:"cartoon", sele:"polymer", color:"chainname"},{type:"spacefill", sele:"hetero and not water", color:"element", radius:1.0}] }
+    ]
+  },
+
+  albumin: {
+    name: "Serum Albumin", category: "normal", pdbId: "1ao6",
+    subtitle: "Blood transport protein — single chain, 3 helical domains, no quaternary structure, PDB 1AO6",
+    about: "The most abundant protein in human blood plasma. It ferries fatty acids, hormones and many drugs through the bloodstream, and its sheer concentration is what maintains blood's osmotic pressure.",
+    stages: [
+      { key:"primary", label:"Primary", title:"Stage 1 — Primary Structure",
+        text:"A single 585-residue chain — one of the largest single-chain proteins commonly studied.",
+        dg:0.0, dh:0.0, ds:0.0, heading:"What's happening physically",
+        notes:`<strong>Reference (unfolded) state.</strong><ul><li>Large chain, so an enormous number of possible unfolded conformations — very high starting entropy.</li></ul>`,
+        reps:[{type:"tube", sele:"polymer", color:"residueindex", radius:0.3}] },
+      { key:"secondary", label:"Secondary", title:"Stage 2 — Secondary Structure",
+        text:"Almost entirely α-helical, like myoglobin — albumin has essentially no β-sheet content.",
+        dg:-3.0, dh:-52, ds:-49.0, heading:"What's happening physically",
+        notes:`<strong>Extensive helix formation.</strong><ul><li>More chain length means more backbone H-bonds forming at this stage than in smaller proteins.</li></ul>`,
+        reps:[{type:"cartoon", sele:"polymer", color:"sstruc"}] },
+      { key:"tertiary", label:"Tertiary", title:"Stage 3 — Tertiary Structure (3 Domains)",
+        text:"The chain folds into 3 similar helical domains that pack together into albumin's characteristic heart-shaped fold (colour = position along the chain).",
+        dg:-12.5, dh:-70, ds:-57.5, heading:"What's happening physically",
+        notes:`<strong>Large proteins are generally more stable.</strong><ul><li>More residues means more stabilising contacts (H-bonds, van der Waals packing) once folded — one reason larger, multi-domain proteins like albumin tend to have a bigger folding ΔG than small single-domain proteins.</li><li>Note there's no separate "quaternary" stage: all 3 domains are part of one continuous chain, not separate polypeptides.</li></ul>`,
+        reps:[{type:"cartoon", sele:"polymer", color:"residueindex"},{type:"spacefill", sele:"polymer and hydrophobic", color:"#f0a868", opacity:0.22, radius:1.0}] }
+    ]
+  },
+
+  collagen: {
+    name: "Collagen", category: "normal", pdbId: "1cag",
+    subtitle: "Structural protein — 3 chains supercoil into a triple helix, not a globular fold, PDB 1CAG",
+    about: "The most abundant protein in the human body by mass — found in skin, tendons, ligaments and bone, where its triple-helix rope structure gives tissue its tensile strength.",
+    stages: [
+      { key:"primary", label:"Primary", title:"Stage 1 — Primary Structure",
+        text:"A single strand with the distinctive repeating Gly-X-Y sequence (X and Y are often proline and hydroxyproline).",
+        dg:0.0, dh:0.0, ds:0.0, heading:"What's happening physically",
+        notes:`<strong>Reference (unfolded) state.</strong><ul><li>The Gly-X-Y repeat is the key: glycine (the smallest amino acid) must appear every third residue, because the final structure packs too tightly for anything bigger to fit there.</li></ul>`,
+        reps:[{type:"tube", sele:":A", color:"residueindex", radius:0.3}] },
+      { key:"secondary", label:"Secondary", title:"Stage 2 — Single-Strand Helix",
+        text:"Each strand twists into a left-handed polyproline-II-like helix — not a standard α-helix or β-sheet.",
+        dg:-1.0, dh:-8, ds:-7.0, heading:"What's happening physically",
+        notes:`<strong>An exception to the usual secondary-structure categories.</strong><ul><li>Proline and hydroxyproline rings restrict backbone rotation, forcing this extended helix shape — it's geometry-driven, not H-bond-driven, unlike α-helices.</li><li>Standard secondary-structure classifiers (like the one colouring earlier proteins in this app) mostly don't recognise this fold — a good example of where the standard classification scheme runs out.</li></ul>`,
+        reps:[{type:"tube", sele:":A", color:"#4fd1c5", radius:0.4}] },
+      { key:"tertiary", label:"Triple Helix", title:"Stage 3 — Triple-Helix Assembly",
+        text:"Three strands (colour-coded) wind around each other into the final rope-like triple helix — collagen's functional structural unit.",
+        dg:-4.0, dh:-18, ds:-14.0, heading:"What's happening physically",
+        notes:`<strong>Stabilised by interchain H-bonds, not a hydrophobic core.</strong><ul><li>Every third residue (glycine) sits at the crowded centre of the triple helix, letting the three chains pack close enough for an interchain H-bond network.</li><li>Collagen triple helices are only marginally stable — many melt near body temperature, which is part of why collagen is prone to damage from heat (e.g. cooking meat literally unwinds it) and why hydroxyproline content matters for stability.</li></ul>`,
+        reps:[{type:"tube", sele:"polymer", color:"chainname", radius:0.4}] }
+    ]
+  },
+
+  proteinA: {
+    name: "Protein A (B-domain)", category: "normal", pdbId: "1bdd",
+    subtitle: "Bacterial IgG-binding domain — 3-helix bundle, classic fast-folding model protein, PDB 1BDD",
+    about: "Produced by the bacterium Staphylococcus aureus, this domain binds antibodies and disables the immune system's ability to tag the bacterium for destruction. It's also a lab workhorse, used to purify antibodies — and, thanks to its small size and speed, a favourite benchmark for testing folding simulations.",
+    stages: [
+      { key:"primary", label:"Primary", title:"Stage 1 — Primary Structure",
+        text:"A short 60-residue chain — one of the smallest proteins in this set.",
+        dg:0.0, dh:0.0, ds:0.0, heading:"What's happening physically",
+        notes:`<strong>Reference (unfolded) state.</strong><ul><li>Being small, it has far fewer possible folds to search through than a large protein — one reason small domains like this fold extremely fast.</li></ul>`,
+        reps:[{type:"tube", sele:"polymer", color:"residueindex", radius:0.35}] },
+      { key:"secondary", label:"Secondary", title:"Stage 2 — Secondary Structure",
+        text:"Three α-helices form — this domain has no β-sheet at all.",
+        dg:-1.5, dh:-14, ds:-12.5, heading:"What's happening physically",
+        notes:`<strong>A minimal helical scaffold.</strong><ul><li>With only 3 helices to pack, there's a very short path from unfolded chain to final fold — this domain folds in roughly microseconds, making it a favourite test case for computational folding simulations (e.g. Shaw et al.'s long-timescale MD studies).</li></ul>`,
+        reps:[{type:"cartoon", sele:"polymer", color:"sstruc"}] },
+      { key:"tertiary", label:"Tertiary", title:"Stage 3 — Tertiary Structure",
+        text:"The 3 helices pack into a compact bundle, burying a small hydrophobic core (pale spheres).",
+        dg:-4.5, dh:-19, ds:-14.5, heading:"What's happening physically",
+        notes:`<strong>Small proteins are typically less stable than large ones.</strong><ul><li>Fewer residues means fewer total stabilising contacts once folded — ΔG here is notably smaller in magnitude than albumin's, illustrating a real size-vs-stability trend across proteins.</li><li>Its small size and simple topology are exactly why this domain became a benchmark for testing folding algorithms and force fields.</li></ul>`,
+        reps:[{type:"cartoon", sele:"polymer", color:"#4fd1c5"},{type:"spacefill", sele:"polymer and hydrophobic", color:"#f0a868", opacity:0.35, radius:1.1}] }
+    ]
+  },
+
+  // ==================================================================
+  // MISFOLDING & DISEASE PROTEINS
+  // ==================================================================
+
+  amyloidBeta: {
+    name: "Amyloid-β (42)", category: "disease", disease: "Alzheimer's Disease", pdbId: "1iyt",
+    subtitle: "Alzheimer's disease — a short peptide that misfolds into brain plaques, PDB 1IYT / 5OQV",
+    about: `<span class="disease-tag">ALZHEIMER'S DISEASE</span>Aβ42 is a 42-residue fragment snipped from a much larger membrane protein (APP). Near cell membranes it can sit as a transient helix, but it is prone to misfolding into the rigid cross-β sheets that form the amyloid plaques seen in Alzheimer's brains — first described by Alois Alzheimer in 1906.`,
+    stages: [
+      { key:"native", label:"Native-like", title:"Stage 1 — Membrane-Associated Helix", pdbId:"1iyt",
+        text:"In a membrane-like environment, Aβ42 folds into two short α-helices — its most stable non-aggregated form (structure solved by NMR).",
+        dg:-3.0, dh:-14, ds:-11.0, heading:"What's happening physically",
+        notes:`<strong>A shallow, fragile energy minimum.</strong><ul><li>Unlike hemoglobin or myoglobin, this helix is only marginally stable — a small nudge (concentration, pH, age) can tip it toward misfolding.</li><li>This is typical of aggregation-prone peptides: the "safe" state and the disease state are often close in energy, separated by a modest barrier rather than a deep, protective valley.</li></ul>`,
+        reps:[{type:"cartoon", sele:"polymer", color:"sstruc"}] },
+      { key:"fibril", label:"Amyloid Fibril", title:"Stage 2 — Amyloid Fibril (Cross-β)", pdbId:"5oqv",
+        text:"Multiple Aβ42 chains stack into a repeating cross-β sheet — this is the real cryo-EM structure of a disease-relevant amyloid fibril (Gremer et al., 2017).",
+        dg:-32.0, dh:-70, ds:-38.0, heading:"What's happening physically",
+        notes:`<strong>The fibril is a deeper — and far more dangerous — energy minimum.</strong><ul><li>Counterintuitively, amyloid fibrils are often thermodynamically <em>more</em> stable than the native fold, not less. That's exactly why, once formed, they resist being broken apart by the cell.</li><li>What normally prevents this is kinetics, not thermodynamics: nucleating the very first stack is slow and rare, but once a seed exists, elongation is fast — and can even template neighbouring molecules, letting aggregation spread between cells.</li></ul>`,
+        reps:[{type:"cartoon", sele:"polymer", color:"chainname"}] }
+    ]
+  },
+
+  alphaSynuclein: {
+    name: "α-Synuclein", category: "disease", disease: "Parkinson's Disease", pdbId: "1xq8",
+    subtitle: "Parkinson's disease — Lewy body protein, PDB 1XQ8 / 6CU7",
+    about: `<span class="disease-tag">PARKINSON'S DISEASE</span>α-Synuclein normally helps regulate the release of neurotransmitters at nerve synapses. In Parkinson's disease it misfolds and aggregates into Lewy bodies — the pathological hallmark first described by Friedrich Lewy in 1912 — inside dopamine-producing neurons.`,
+    stages: [
+      { key:"native", label:"Native-like", title:"Stage 1 — Membrane-Bound Helix", pdbId:"1xq8",
+        text:"When bound to a lipid membrane (its normal working environment at the synapse), α-synuclein folds into an extended, curved α-helix.",
+        dg:-4.0, dh:-18, ds:-14.0, heading:"What's happening physically",
+        notes:`<strong>An intrinsically disordered protein, briefly given shape.</strong><ul><li>On its own in solution, α-synuclein has essentially no fixed fold at all — it only becomes ordered when it wraps around a membrane surface.</li><li>Proteins that never settle into one protective native fold are, as a class, more prone to aggregation than stably-folded proteins like hemoglobin.</li></ul>`,
+        reps:[{type:"cartoon", sele:"polymer", color:"sstruc"}] },
+      { key:"fibril", label:"Lewy Fibril", title:"Stage 2 — Amyloid Fibril (Lewy Body Core)", pdbId:"6cu7",
+        text:"Stacked chains form the cross-β fibril core found in Lewy bodies — this real cryo-EM structure (Guerrero-Ferreira et al., 2018) shows two intertwined protofilaments.",
+        dg:-29.0, dh:-64, ds:-35.0, heading:"What's happening physically",
+        notes:`<strong>Familial Parkinson's mutations cluster right at the fibril interface.</strong><ul><li>Several disease-linked point mutations (e.g. A53T, E46K) sit exactly at the contact surface between the two protofilaments seen here — they don't just destabilise the native state, they actively favour this fibril geometry.</li><li>Like Aβ, the fibril is a deep energy well; the disease is fundamentally a kinetics problem — stopping nucleation — not a thermodynamics one.</li></ul>`,
+        reps:[{type:"cartoon", sele:"polymer", color:"chainname"}] }
+    ]
+  },
+
+  tau: {
+    name: "Tau", category: "disease", disease: "Alzheimer's & Other Tauopathies", pdbId: "6cvn",
+    subtitle: "Alzheimer's & tauopathies — microtubule-stabilising protein, PDB 6CVN / 5O3L",
+    about: `<span class="disease-tag">ALZHEIMER'S & TAUOPATHIES</span>Tau's normal job is to bind and stabilise microtubules — the neuron's internal transport rails. In Alzheimer's and related "tauopathies," hyperphosphorylated tau detaches from microtubules and aggregates into the neurofibrillary tangles that spread through the brain as disease progresses.`,
+    stages: [
+      { key:"native", label:"Bound to Microtubule", title:"Stage 1 — Stapling Tubulin Together", pdbId:"6cvn",
+        text:"Tau has no stable fold of its own — it's intrinsically disordered in solution. Only when it binds a microtubule (shown here, cryo-EM model) does it adopt a defined, extended conformation along the tubulin surface.",
+        dg:-2.5, dh:-11.0, ds:-8.5, heading:"What's happening physically",
+        notes:`<strong>Function without a folded state.</strong><ul><li>This is the clearest case in this collection: tau's "native structure" isn't really a 3-D fold at all, it's a functional interaction — the repeats in tau staple adjacent tubulin dimers together, stabilising the microtubule.</li><li>Hyperphosphorylation adds negative charge that weakens this binding, releasing tau into the cytoplasm as a free, disordered — and aggregation-prone — chain.</li></ul>`,
+        reps:[{type:"cartoon", sele:"polymer", color:"chainname"}] },
+      { key:"fibril", label:"Paired Helical Filament", title:"Stage 2 — Neurofibrillary Tangle Core", pdbId:"5o3l",
+        text:"Once released and misfolded, tau chains stack into paired helical filaments — this is the real, landmark cryo-EM structure solved directly from an Alzheimer's patient's brain tissue (Fitzpatrick et al., 2017).",
+        dg:-27.0, dh:-60, ds:-33.0, heading:"What's happening physically",
+        notes:`<strong>Solved from real patient tissue — not a lab model.</strong><ul><li>Unlike most structures in this app, this one was determined directly from filaments extracted from a person who had Alzheimer's disease, not a protein produced in the lab.</li><li>Different tauopathies (Alzheimer's, CTE, Pick's disease) produce structurally distinct tau fibril "strains" from the very same protein — a real, and still not fully understood, example of one sequence adopting multiple disease-specific misfolded shapes.</li></ul>`,
+        reps:[{type:"cartoon", sele:"polymer", color:"chainname"}] }
+    ]
+  },
+
+  prion: {
+    name: "Prion Protein (PrP)", category: "disease", disease: "Creutzfeldt–Jakob & Prion Disease", pdbId: "1qlx",
+    subtitle: "Prion disease — the same sequence, two different folds, PDB 1QLX / 6LNI",
+    about: `<span class="disease-tag">PRION DISEASE (CJD)</span>PrP is a normal cell-surface protein of unclear full function. Prion disease is unique: no mutation is required — the exact same protein sequence can adopt an infectious misfolded shape (PrP^Sc) that converts normal copies (PrP^C) just by touching them, the discovery that won Stanley Prusiner the 1997 Nobel Prize.`,
+    stages: [
+      { key:"native", label:"Native PrP\u1d9c", title:"Stage 1 — Healthy, Helix-Rich Fold", pdbId:"1qlx",
+        text:"The normal cellular form (PrP^C), solved by NMR: mostly α-helix with a small two-strand β-sheet.",
+        dg:-7.0, dh:-30.0, ds:-23.0, heading:"What's happening physically",
+        notes:`<strong>A completely ordinary, stable fold — for now.</strong><ul><li>On its own, native PrP is a perfectly stable, helix-dominated globular domain, not obviously different from countless harmless proteins.</li><li>The danger isn't in this structure itself — it's that this exact sequence has an alternative, even more stable, conformation available to it.</li></ul>`,
+        reps:[{type:"cartoon", sele:"polymer", color:"sstruc"}] },
+      { key:"fibril", label:"Misfolded PrP\u02e2\u1d9c", title:"Stage 2 — Infectious Fibril (PrP\u02e2\u1d9c-like)", pdbId:"6lni",
+        text:"The same amino acid sequence, refolded: two of the α-helices convert into β-strands, and the chain stacks into a cross-β amyloid fibril (real cryo-EM structure, Kraus et al., 2021).",
+        dg:-24.0, dh:-52.0, ds:-28.0, heading:"What's happening physically",
+        notes:`<strong>Same sequence, same atoms, a completely different (and self-propagating) fold.</strong><ul><li>No mutation, no new molecule — just a conformational conversion. This is the "protein-only hypothesis": the misfolded shape itself acts as the template, converting native PrP^C into more of the fibril form on contact.</li><li>That templating mechanism is what makes prion disease transmissible between individuals (and in animals, between species) — a property no other protein in this app shares.</li></ul>`,
+        reps:[{type:"cartoon", sele:"polymer", color:"chainname"}] }
+    ]
+  }
+};
+
+const CATEGORIES = [
+  { id: "normal", label: "Normal Function" },
+  { id: "disease", label: "Misfolding & Disease" },
+];
+
+const PROTEIN_ORDER = ["hemoglobin","myoglobin","insulin","albumin","collagen","proteinA","amyloidBeta","alphaSynuclein","tau","prion"];
+
+let currentCategory = "normal";
+let currentProteinId = "hemoglobin";
+let current = 0;
+let playTimer = null;
+let stage3d = null;
+let component = null;
+let chart = null;
+let currentLoadedPdbId = null;
+
+function protein(){ return PROTEINS[currentProteinId]; }
+function stages(){ return protein().stages; }
+function effectivePdbId(stage){ return stage.pdbId || protein().pdbId; }
+
+// ---------------- CATEGORY TABS ----------------
+const catTabsEl = document.getElementById('categoryTabs');
+CATEGORIES.forEach(cat => {
+  const btn = document.createElement('div');
+  btn.className = 'cat-tab';
+  btn.textContent = cat.label;
+  btn.dataset.id = cat.id;
+  btn.addEventListener('click', () => switchCategory(cat.id));
+  catTabsEl.appendChild(btn);
+});
+function renderCategoryTabs(){
+  catTabsEl.querySelectorAll('.cat-tab').forEach(el => {
+    const isActive = el.dataset.id === currentCategory;
+    el.classList.toggle('active', isActive);
+    el.classList.toggle('disease', el.dataset.id === 'disease');
+  });
+  document.getElementById('app').classList.toggle('disease-mode', currentCategory === 'disease');
+}
+function switchCategory(catId){
+  if(catId === currentCategory) return;
+  currentCategory = catId;
+  renderCategoryTabs();
+  renderPicker();
+  const firstInCat = PROTEIN_ORDER.find(id => PROTEINS[id].category === catId);
+  switchProtein(firstInCat);
+}
+
+// ---------------- PROTEIN PICKER ----------------
+const pickerEl = document.getElementById('proteinPicker');
+function renderPicker(){
+  pickerEl.innerHTML = '';
+  PROTEIN_ORDER.filter(id => PROTEINS[id].category === currentCategory).forEach(id => {
+    const chip = document.createElement('div');
+    chip.className = 'chip';
+    chip.textContent = PROTEINS[id].name;
+    chip.dataset.id = id;
+    chip.addEventListener('click', () => switchProtein(id));
+    pickerEl.appendChild(chip);
+  });
+  updateChipActive();
+}
+function updateChipActive(){
+  pickerEl.querySelectorAll('.chip').forEach(c => c.classList.toggle('active', c.dataset.id === currentProteinId));
+}
+
+// ---------------- TIMELINE ----------------
+function buildTimeline(){
+  const stopsEl = document.getElementById('stops');
+  stopsEl.innerHTML = '';
+  stages().forEach((s, i) => {
+    const stop = document.createElement('div');
+    stop.className = 'stop';
+    stop.dataset.index = i;
+    stop.innerHTML = `<label>${s.label}</label>`;
+    stop.addEventListener('click', () => goToStage(i));
+    stopsEl.appendChild(stop);
+  });
+  document.getElementById('stageCountBadge').textContent = stages().length + ' STAGES';
+}
+function renderTimeline(){
+  const stopEls = document.querySelectorAll('#stops .stop');
+  stopEls.forEach((el, i) => {
+    el.classList.toggle('active', i === current);
+    el.classList.toggle('done', i < current);
+  });
+  const denom = Math.max(1, stages().length - 1);
+  document.getElementById('fill').style.width = (current / denom) * 100 + '%';
+  document.getElementById('prevBtn').disabled = current === 0;
+  document.getElementById('nextBtn').disabled = current === stages().length - 1;
+}
+
+// ---------------- PHYSICS PANEL ----------------
+function renderPhysics(){
+  const s = stages()[current];
+  document.getElementById('stageTitle').textContent = s.title;
+  document.getElementById('stageText').textContent = s.text;
+  document.getElementById('dgVal').textContent = s.dg.toFixed(1);
+  document.getElementById('dhVal').textContent = s.dh.toFixed(1);
+  document.getElementById('dsVal').textContent = s.ds.toFixed(1);
+  document.getElementById('physicsHeading').textContent = s.heading;
+  document.getElementById('physicsNotes').innerHTML = s.notes;
+  document.getElementById('pdbTag').textContent = 'PDB ' + effectivePdbId(s).toUpperCase() + ' · live structure via RCSB';
+  document.getElementById('aboutBox').innerHTML = protein().about;
+  document.getElementById('caveatBox').innerHTML = currentCategory === 'disease'
+    ? `Structures are real, published PDB entries (cited above). Thermodynamic numbers are illustrative, not stage-by-stage measurements — but the <em>direction</em> is real and well-documented: amyloid fibrils are generally more thermodynamically stable than the native/functional state. What normally protects you isn't a thermodynamic barrier, it's a kinetic one (slow nucleation) — which is exactly why age, concentration, and seeding all matter for these diseases.`
+    : `Structures are real, published PDB entries. Thermodynamic numbers are illustrative — not stage-by-stage measurements — chosen to reflect real, documented trends (protein size vs. stability, collagen's marginal stability, disulfide bonds as covalent reinforcement).`;
+  const chartHeading = document.getElementById('chartHeading');
+  chartHeading.textContent = currentCategory === 'disease' ? 'Aggregation Kinetics' : 'ΔG across folding stages';
+  updateChart();
+  // retrigger fade animation
+  const wrap = document.getElementById('stageDescWrap');
+  wrap.style.animation = 'none'; void wrap.offsetWidth; wrap.style.animation = null;
+}
+
+// ---------------- CHARTS ----------------
+function aggregationKineticsData(){
+  // classic nucleation-dependent polymerization curve: lag -> growth -> plateau
+  const xs = []; const ys = [];
+  for(let x = 0; x <= 20; x++){
+    xs.push(x);
+    ys.push(+(100 / (1 + Math.exp(-(x - 12) / 2.0))).toFixed(1));
+  }
+  return { xs, ys };
+}
+function initChart(){
+  const ctx = document.getElementById('chart').getContext('2d');
+  if(chart) chart.destroy();
+  if(currentCategory === 'disease'){
+    const { xs, ys } = aggregationKineticsData();
+    chart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: xs.map(String),
+        datasets: [{
+          label: 'Aggregated fraction (%)',
+          data: ys,
+          borderColor: '#e5555c', backgroundColor: 'rgba(229,85,92,0.10)',
+          pointRadius: 0, borderWidth: 2.5, tension: 0.15, fill: true,
+        }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { title: { display:true, text:'Time (arbitrary units)', color:'#8a97ab', font:{family:'IBM Plex Mono', size:10.5} },
+               ticks: { color: '#8a97ab', font: { family: 'IBM Plex Mono', size: 8 }, maxTicksLimit: 6 }, grid: { color: '#1c2432' } },
+          y: { title: { display:true, text:'Aggregated (%)', color:'#8a97ab', font:{family:'IBM Plex Mono', size:10.5} },
+               ticks: { color: '#8a97ab', font: { family: 'IBM Plex Mono', size: 9 } }, grid: { color: '#1c2432' }, min:0, max:100 }
+        }
+      }
+    });
+  } else {
+    chart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: stages().map(s => s.label),
+        datasets: [{
+          label: 'ΔG (kcal/mol)',
+          data: stages().map((s, i) => i <= current ? s.dg : null),
+          borderColor: '#f0a868', backgroundColor: 'rgba(240,168,104,0.12)',
+          pointBackgroundColor: stages().map((s,i)=> i===current ? '#f0a868' : '#4fd1c5'),
+          pointRadius: 5, tension: 0.35, fill: true,
+        }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { ticks: { color: '#8a97ab', font: { family: 'IBM Plex Mono', size: 10 } }, grid: { color: '#1c2432' } },
+          y: { ticks: { color: '#8a97ab', font: { family: 'IBM Plex Mono', size: 9 } }, grid: { color: '#1c2432' } }
+        }
+      }
+    });
+  }
+}
+function updateChart(){
+  if(!chart) return;
+  if(currentCategory === 'disease'){
+    // static kinetics curve — annotate current position with a marker via point styling
+    const { xs } = aggregationKineticsData();
+    const stageFrac = stages().length > 1 ? current / (stages().length - 1) : 1;
+    const markIdx = Math.round(stageFrac * (xs.length - 1));
+    chart.data.datasets[0].pointRadius = xs.map((x,i) => i === markIdx ? 6 : 0);
+    chart.data.datasets[0].pointBackgroundColor = xs.map((x,i) => i === markIdx ? '#ffffff' : '#e5555c');
+    chart.data.datasets[0].pointBorderColor = '#e5555c';
+    chart.update();
+  } else {
+    chart.data.labels = stages().map(s => s.label);
+    chart.data.datasets[0].data = stages().map((s, i) => i <= current ? s.dg : null);
+    chart.data.datasets[0].pointBackgroundColor = stages().map((s,i)=> i===current ? '#f0a868' : (i < current ? '#4fd1c5' : '#1c2432'));
+    chart.update();
+  }
+}
+
+// ---------------- 3D VIEWER ----------------
+function initViewer(){
+  stage3d = new NGL.Stage('viewport', { backgroundColor: '#0a0e15' });
+  window.addEventListener('resize', () => stage3d.handleResize());
+  ensureStructureForStage();
+}
+function loadStructure(pdbId){
+  document.getElementById('loadingMsg').style.display = 'flex';
+  document.getElementById('loadingMsg').innerHTML = '<div class="spinner"></div>Loading ' + pdbId.toUpperCase() + ' from RCSB…';
+  if(stage3d.compList && stage3d.compList.length){ stage3d.removeAllComponents(); }
+  component = null;
+  stage3d.loadFile('rcsb://' + pdbId).then(function(comp){
+    component = comp;
+    currentLoadedPdbId = pdbId;
+    document.getElementById('loadingMsg').style.display = 'none';
+    applyStageRepresentation();
+    stage3d.setSpin(true);
+  }).catch(function(err){
+    document.getElementById('loadingMsg').innerHTML = "Couldn't load this structure from RCSB (check internet connection).";
+  });
+}
+function ensureStructureForStage(){
+  const pdbId = effectivePdbId(stages()[current]);
+  if(pdbId !== currentLoadedPdbId){
+    loadStructure(pdbId);
+  } else {
+    applyStageRepresentation();
+  }
+}
+function applyStageRepresentation(){
+  if(!component) return;
+  component.removeAllRepresentations();
+  const s = stages()[current];
+  try{
+    s.reps.forEach(r => {
+      const params = Object.assign({}, r);
+      const type = params.type; delete params.type;
+      component.addRepresentation(type, params);
+    });
+    component.autoView(s.reps[0].sele, 500);
+  } catch(e){
+    component.autoView(undefined, 500);
+  }
+}
+
+// ---------------- NAVIGATION ----------------
+function goToStage(i){
+  if(i < 0 || i >= stages().length) return;
+  current = i;
+  renderTimeline();
+  renderPhysics();
+  ensureStructureForStage();
+}
+function switchProtein(id){
+  if(!id) return;
+  const catChanged = PROTEINS[id].category !== currentCategory;
+  if(catChanged){ currentCategory = PROTEINS[id].category; renderCategoryTabs(); renderPicker(); }
+  if(id === currentProteinId && !catChanged) return;
+  stopPlay();
+  currentProteinId = id;
+  current = 0;
+  updateChipActive();
+  document.getElementById('proteinSubtitle').innerHTML = protein().subtitle;
+  buildTimeline();
+  renderTimeline();
+  renderPhysics();
+  initChart();
+  ensureStructureForStage();
+}
+function stopPlay(){
+  clearInterval(playTimer); playTimer = null;
+  document.getElementById('playBtn').textContent = '▶ Play';
+}
+document.getElementById('prevBtn').addEventListener('click', () => { stopPlay(); goToStage(current - 1); });
+document.getElementById('nextBtn').addEventListener('click', () => { stopPlay(); goToStage(current + 1); });
+document.getElementById('playBtn').addEventListener('click', () => {
+  if(playTimer){ stopPlay(); return; }
+  document.getElementById('playBtn').textContent = '⏸ Pause';
+  playTimer = setInterval(() => {
+    if(current >= stages().length - 1){ stopPlay(); return; }
+    goToStage(current + 1);
+  }, 3200);
+});
+
+// ---------------- INIT ----------------
+renderCategoryTabs();
+renderPicker();
+document.getElementById('proteinSubtitle').innerHTML = protein().subtitle;
+buildTimeline();
+renderTimeline();
+renderPhysics();
+initChart();
+initViewer();
+</script>
+</body>
+</html>

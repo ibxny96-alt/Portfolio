@@ -1,0 +1,1418 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Project 1 — Airfoil Aerodynamics</title>
+<script>document.documentElement.classList.add('js');</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<!-- No external charting library: performance curves are hand-drawn SVG (see PERFORMANCE
+     CHARTS in the script below) so their sizing is fully self-contained and can't overlap
+     anything, unlike a canvas library that resizes itself based on its container. -->
+<style>
+:root{
+  --bg-0:#080b11; --bg-1:#0d131d; --bg-2:#121a26; --bg-3:#182335;
+  --line:rgba(255,255,255,0.08); --line-strong:rgba(255,255,255,0.16);
+  --text-0:#eef2f8; --text-1:#aab4c4; --text-2:#6c7789;
+  --blue:#5b9dff; --blue-dim:#2f5a91;
+  --warm:#ff8a5c; --warm-dim:#8a4a30;
+  --green:#5fd88f;
+  --amber:#f2c94c;
+  --red:#ff6161;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+}
+*{box-sizing:inherit}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+@media (prefers-color-scheme: light){
+  :root:not([data-theme="dark"]){
+    --bg-0:#f3f5f9; --bg-1:#ffffff; --bg-2:#eef1f6; --bg-3:#e4e9f1;
+    --line:rgba(20,30,50,0.10); --line-strong:rgba(20,30,50,0.2);
+    --text-0:#111722; --text-1:#4a5568; --text-2:#7b8698;
+  }
+}
+:root[data-theme="dark"]{
+  --bg-0:#080b11; --bg-1:#0d131d; --bg-2:#121a26; --bg-3:#182335;
+  --line:rgba(255,255,255,0.08); --line-strong:rgba(255,255,255,0.16);
+  --text-0:#eef2f8; --text-1:#aab4c4; --text-2:#6c7789;
+}
+html,body{margin:0;padding:0}
+body{
+  background:
+    radial-gradient(1200px 700px at 15% -10%, #10192a 0%, transparent 60%),
+    radial-gradient(1000px 600px at 110% 10%, #131c2c 0%, transparent 55%),
+    var(--bg-0);
+  color:var(--text-0);
+  font-family:'Space Grotesk',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  -webkit-font-smoothing:antialiased;
+  min-height:100%;
+}
+.mono{font-family:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace}
+a{color:var(--blue)}
+
+/* ---------- Layout shell ---------- */
+.wrap{max-width:1320px;margin:0 auto;padding:28px 22px 80px}
+@media (max-width:720px){.wrap{padding:18px 14px 60px}}
+
+header.hero{
+  padding:20px 0 30px;
+  border-bottom:1px solid var(--line);
+  margin-bottom:26px;
+}
+.kicker{
+  font-family:'JetBrains Mono',monospace;
+  font-size:12px; letter-spacing:.14em; color:var(--blue);
+  display:flex; align-items:center; gap:10px; margin-bottom:14px;
+}
+.kicker::before{content:"";width:22px;height:1px;background:var(--blue-dim)}
+h1{
+  font-size:clamp(28px,4.4vw,46px); line-height:1.04; margin:0 0 14px;
+  font-weight:700; letter-spacing:-0.01em;
+}
+.question{
+  font-size:clamp(15px,1.7vw,19px); color:var(--text-1); max-width:900px; line-height:1.5;
+  margin:0;
+}
+.question em{color:var(--text-0); font-style:normal; border-bottom:1px solid var(--blue-dim)}
+
+/* ---------- Grid ---------- */
+.grid{
+  display:grid;
+  grid-template-columns: 300px 1fr;
+  gap:20px;
+  align-items:start;
+}
+@media (max-width:980px){ .grid{grid-template-columns:1fr} }
+
+.panel{
+  background:linear-gradient(180deg, var(--bg-2), var(--bg-1));
+  border:1px solid var(--line);
+  border-radius:14px;
+  padding:20px;
+}
+.panel + .panel{margin-top:20px}
+.panel h2{
+  font-size:13px; text-transform:uppercase; letter-spacing:.1em;
+  color:var(--text-2); margin:0 0 16px; font-weight:600;
+}
+
+/* ---------- Controls ---------- */
+.field{margin-bottom:18px}
+.field:last-child{margin-bottom:0}
+.field label{
+  display:flex; justify-content:space-between; align-items:baseline;
+  font-size:13px; color:var(--text-1); margin-bottom:8px;
+}
+.field label .val{font-family:'JetBrains Mono',monospace; color:var(--text-0); font-size:13px; font-weight:600}
+input[type=range]{
+  -webkit-appearance:none; width:100%; height:4px; border-radius:2px;
+  background:var(--bg-3); outline:none; margin:0;
+}
+input[type=range]::-webkit-slider-thumb{
+  -webkit-appearance:none; width:16px; height:16px; border-radius:50%;
+  background:var(--blue); cursor:pointer; border:2px solid var(--bg-0);
+  box-shadow:0 0 0 1px var(--blue-dim);
+}
+input[type=range]::-moz-range-thumb{
+  width:14px; height:14px; border-radius:50%; background:var(--blue); cursor:pointer; border:2px solid var(--bg-0);
+}
+input[type=text], select{
+  width:100%; background:var(--bg-3); border:1px solid var(--line-strong); color:var(--text-0);
+  padding:9px 10px; border-radius:8px; font-family:'JetBrains Mono',monospace; font-size:14px;
+}
+select{appearance:none; cursor:pointer}
+.hint{font-size:11px; color:var(--text-2); margin-top:6px; line-height:1.4}
+.rangewrap{display:flex; justify-content:space-between; font-size:10px; color:var(--text-2); margin-top:4px; font-family:'JetBrains Mono',monospace}
+
+/* ---------- Sweep button ---------- */
+.sweep-btn{
+  display:flex; align-items:center; gap:10px; width:100%;
+  background:linear-gradient(180deg, var(--blue), var(--blue-dim));
+  border:none; border-radius:10px; color:#0a1220; font-weight:600; font-size:14px;
+  padding:12px 16px; cursor:pointer; font-family:'Space Grotesk',sans-serif;
+  transition:filter .15s;
+}
+.sweep-btn:hover{filter:brightness(1.08)}
+.sweep-btn.playing{background:linear-gradient(180deg, var(--warm), var(--warm-dim))}
+.sweep-btn svg{flex:none}
+.sweep-btn.playing #sweepIcon{display:none}
+.sweep-btn:not(.playing) #pauseIcon{display:none}
+
+/* ---------- Viz ---------- */
+.viz-card{padding:0; overflow:hidden}
+.viz-top{display:flex; justify-content:space-between; align-items:center; padding:16px 20px 0; flex-wrap:wrap; gap:10px}
+.viz-top h2{margin:0}
+.legend{display:flex; gap:14px; font-size:11px; color:var(--text-2); align-items:center; flex-wrap:wrap}
+.legend span{display:inline-flex; align-items:center; gap:6px}
+.dot{width:9px;height:9px;border-radius:50%;display:inline-block}
+svg#viz{width:100%; height:auto; display:block}
+.stall-flag{
+  display:none; margin:14px 20px 0; padding:8px 12px; border-radius:8px;
+  background:rgba(255,97,97,.12); border:1px solid rgba(255,97,97,.35);
+  color:#ff9c9c; font-size:12.5px; font-family:'JetBrains Mono',monospace;
+}
+.stall-flag.show{display:block}
+
+/* ---------- HUD readouts (docked to the viz panel, always aligned under the SVG) ---------- */
+.hud{
+  display:grid; grid-template-columns:repeat(6,1fr); gap:1px;
+  background:var(--line); border-top:1px solid var(--line); margin-top:16px;
+}
+@media (max-width:760px){.hud{grid-template-columns:repeat(3,1fr)}}
+@media (max-width:420px){.hud{grid-template-columns:repeat(2,1fr)}}
+.hud-item{background:var(--bg-2); padding:12px 14px}
+.hud-item.hero{background:linear-gradient(180deg, rgba(91,157,255,.14), var(--bg-2))}
+.hud-lbl{font-size:10.5px; color:var(--text-2); text-transform:uppercase; letter-spacing:.08em; margin-bottom:5px}
+.hud-num{font-family:'JetBrains Mono',monospace; font-size:19px; font-weight:600; color:var(--text-0); white-space:nowrap}
+.hud-item.hero .hud-num{color:var(--blue); font-size:23px}
+.hud-unit{font-size:11px; color:var(--text-2); margin-left:3px; font-weight:400}
+.hud-total{
+  padding:11px 20px; font-family:'JetBrains Mono',monospace; font-size:12.5px; color:var(--text-1);
+  background:var(--bg-1); border-top:1px solid var(--line);
+}
+
+/* ---------- Performance chart panel (hand-drawn SVG, no external lib) ---------- */
+.chart-panel{margin-top:20px; padding:16px 16px 8px}
+.tabs{display:flex; gap:6px; margin-bottom:12px; flex-wrap:wrap}
+.tab{
+  background:var(--bg-3); border:1px solid var(--line); color:var(--text-1);
+  padding:7px 13px; border-radius:8px; font-size:12.5px; font-family:'Space Grotesk',sans-serif;
+  cursor:pointer; transition:all .15s;
+}
+.tab:hover{color:var(--text-0)}
+.tab.active{background:var(--blue-dim); border-color:var(--blue); color:#fff}
+svg#chartSvg{width:100%; height:auto; display:block; cursor:crosshair}
+.chart-hint{font-size:11px; color:var(--text-2); text-align:center; padding:8px 0 4px; font-family:'JetBrains Mono',monospace}
+
+/* ---------- about ---------- */
+.about{margin-top:20px; font-size:14px; line-height:1.65; color:var(--text-1)}
+.about h2{margin-bottom:12px}
+.about p{margin:0 0 12px}
+.about .grid2{display:grid; grid-template-columns:1fr 1fr; gap:24px; margin-top:6px}
+@media (max-width:760px){.about .grid2{grid-template-columns:1fr}}
+.about h4{color:var(--text-0); font-size:13px; text-transform:uppercase; letter-spacing:.06em; margin:0 0 8px}
+.about code{background:var(--bg-3); padding:1px 6px; border-radius:5px; font-family:'JetBrains Mono',monospace; font-size:12.5px; color:var(--blue)}
+.footnote{margin-top:22px; padding-top:16px; border-top:1px solid var(--line); font-size:12.5px; color:var(--text-2)}
+
+.naca-row{display:flex; gap:8px}
+.naca-row input{flex:1}
+button.mini{
+  background:var(--bg-3); border:1px solid var(--line-strong); color:var(--text-1);
+  border-radius:8px; padding:0 12px; font-family:'JetBrains Mono',monospace; font-size:12px; cursor:pointer;
+}
+button.mini:hover{color:var(--text-0); border-color:var(--blue-dim)}
+.presets{display:flex; gap:6px; margin-top:8px; flex-wrap:wrap}
+
+/* =========================================================================
+   VISUAL LAYER — live wind-tunnel background, glass panels, motion polish
+   ========================================================================= */
+.progress{position:fixed;top:0;left:0;right:0;height:2px;z-index:50;transform-origin:0 50%;transform:scaleX(0);
+  background:linear-gradient(90deg,var(--blue),var(--warm));box-shadow:0 0 12px rgba(91,157,255,.6);pointer-events:none}
+.bg-grid{position:fixed;inset:-60px;z-index:0;pointer-events:none;
+  background-image:linear-gradient(var(--line) 1px,transparent 1px),linear-gradient(90deg,var(--line) 1px,transparent 1px);
+  background-size:56px 56px;
+  -webkit-mask-image:radial-gradient(ellipse at 50% 35%,#000 15%,transparent 72%);mask-image:radial-gradient(ellipse at 50% 35%,#000 15%,transparent 72%);
+  transform:translate3d(var(--gx,0px),var(--gy,0px),0);will-change:transform}
+#flowfx{position:fixed;inset:0;width:100%;height:100%;z-index:0;pointer-events:none;display:block}
+.bg-glow{position:fixed;inset:0;z-index:0;pointer-events:none;
+  background:radial-gradient(520px circle at var(--cx,70%) var(--cy,20%),rgba(91,157,255,.10),transparent 65%)}
+.wrap{position:relative;z-index:1}
+
+/* header */
+header.hero{position:relative}
+.back{display:inline-flex;align-items:center;gap:8px;font-size:12.5px;color:var(--text-2);text-decoration:none;
+  font-family:'JetBrains Mono',monospace;margin-bottom:18px;padding:4px 0;animation:fadeUp .7s ease both}
+.back span{display:inline-block;transition:transform .25s ease}
+.back:hover{color:var(--text-0)}
+.back:hover span{transform:translateX(-4px)}
+@keyframes fadeUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+.kicker{animation:fadeUp .7s .05s ease both}
+.kicker::before{animation:growLine .9s .2s cubic-bezier(.2,.8,.2,1) both}
+@keyframes growLine{from{width:0}to{width:22px}}
+.question{animation:fadeUp .9s .55s ease both}
+.word{display:inline-block;white-space:nowrap;margin-right:.26em}
+.ch{display:inline-block;opacity:0;transform:translateY(.6em) rotate(5deg);filter:blur(8px);
+  animation:chIn .85s cubic-bezier(.2,.8,.2,1) forwards;animation-delay:calc(var(--i)*35ms + 180ms)}
+@keyframes chIn{to{opacity:1;transform:none;filter:none}}
+.hero-art{position:absolute;right:0;top:34px;width:340px;height:150px;pointer-events:none;opacity:.95}
+@media (max-width:1240px){.hero-art{display:none}}
+.hf{fill:rgba(91,157,255,.10);stroke:var(--blue);stroke-width:1.6;stroke-linejoin:round;stroke-dasharray:1000;stroke-dashoffset:1000;
+  animation:drawFoil 2.4s .6s cubic-bezier(.3,.7,.2,1) forwards,fillFoil 1.2s 2.4s ease forwards}
+@keyframes drawFoil{to{stroke-dashoffset:0}}
+@keyframes fillFoil{from{fill:rgba(91,157,255,0)}to{fill:rgba(91,157,255,.14)}}
+.hl{fill:none;stroke:var(--blue);stroke-opacity:.38;stroke-width:1;stroke-dasharray:4 9;animation:hlFlow 1.5s linear infinite}
+@keyframes hlFlow{to{stroke-dashoffset:-26}}
+
+/* glass panels + hover spotlight */
+.panel{position:relative;background:linear-gradient(180deg,color-mix(in srgb,var(--bg-2) 82%,transparent),color-mix(in srgb,var(--bg-1) 78%,transparent));
+  -webkit-backdrop-filter:blur(12px) saturate(1.2);backdrop-filter:blur(12px) saturate(1.2);
+  transition:border-color .4s ease,box-shadow .4s ease}
+.panel::before{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;opacity:0;transition:opacity .35s ease;
+  background:radial-gradient(380px circle at var(--mx,50%) var(--my,50%),rgba(91,157,255,.10),transparent 62%)}
+.panel:hover::before{opacity:1}
+.panel:hover{border-color:var(--line-strong)}
+
+/* scroll reveal */
+.js .rv{opacity:0;transform:translateY(26px) scale(.985);
+  transition:opacity .8s cubic-bezier(.2,.7,.2,1),transform .8s cubic-bezier(.2,.7,.2,1),border-color .4s ease,box-shadow .4s ease;
+  transition-delay:var(--d,0s),var(--d,0s),0s,0s}
+.js .rv.in{opacity:1;transform:none}
+
+/* controls */
+input[type=range]{background:linear-gradient(to right,var(--blue) var(--p,50%),var(--bg-3) var(--p,50%));cursor:pointer}
+input[type=range]::-webkit-slider-thumb{transition:transform .15s ease,box-shadow .15s ease}
+input[type=range]::-webkit-slider-thumb:hover{transform:scale(1.2);box-shadow:0 0 0 7px rgba(91,157,255,.18)}
+input[type=range]:active::-webkit-slider-thumb{transform:scale(1.35);box-shadow:0 0 0 10px rgba(91,157,255,.22)}
+input[type=text]:focus,select:focus{outline:none;border-color:var(--blue);box-shadow:0 0 0 3px rgba(91,157,255,.18)}
+input[type=text],select{transition:border-color .2s ease,box-shadow .2s ease}
+button:focus-visible,input:focus-visible,select:focus-visible,a:focus-visible{outline:2px solid var(--blue);outline-offset:3px}
+button.mini,.tab,.sweep-btn{position:relative;overflow:hidden;transition:background .2s ease,border-color .2s ease,color .2s ease,transform .12s ease,box-shadow .25s ease,filter .15s}
+button.mini:hover,.tab:hover{transform:translateY(-1px)}
+button.mini:active,.tab:active,.sweep-btn:active{transform:scale(.96)}
+.tab.active{box-shadow:0 0 18px rgba(91,157,255,.28)}
+.sweep-btn:hover{box-shadow:0 6px 22px rgba(91,157,255,.35)}
+.sweep-btn.playing{animation:sweepGlow 1.6s ease-in-out infinite}
+@keyframes sweepGlow{0%,100%{box-shadow:0 0 0 0 rgba(255,138,92,0)}50%{box-shadow:0 0 22px 2px rgba(255,138,92,.45)}}
+.ripple{position:absolute;border-radius:50%;pointer-events:none;background:currentColor;opacity:.28;transform:scale(0);animation:rip .6s ease-out forwards}
+@keyframes rip{to{transform:scale(1);opacity:0}}
+
+/* readouts */
+.hud-item{transition:background .3s ease}
+.hud-item:hover{background:var(--bg-3)}
+.hud-item.hero .hud-num{text-shadow:0 0 18px rgba(91,157,255,.55)}
+.hud-num .n{display:inline}
+
+/* stall state */
+.viz-card{transition:border-color .5s ease,box-shadow .5s ease}
+.viz-card.stalled{border-color:rgba(255,97,97,.55);box-shadow:0 0 0 1px rgba(255,97,97,.25),0 0 46px rgba(255,97,97,.16)}
+.stall-flag.show{animation:flagIn .45s cubic-bezier(.2,.9,.3,1.2)}
+@keyframes flagIn{from{opacity:0;transform:translateY(-8px) scale(.98)}to{opacity:1;transform:none}}
+.chart-hint{transition:color .3s}
+svg#viz{filter:drop-shadow(0 0 0 transparent)}
+
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important;transition-delay:0s!important}
+  .ch{opacity:1;transform:none;filter:none}
+  .hf{stroke-dashoffset:0}
+}
+</style>
+</head>
+<body>
+<div class="progress" id="progress" aria-hidden="true"></div>
+<div class="bg-grid" aria-hidden="true"></div>
+<div class="bg-glow" aria-hidden="true"></div>
+<canvas id="flowfx" aria-hidden="true"></canvas>
+<div class="wrap">
+
+  <header class="hero">
+    <a class="back" href="index.html"><span aria-hidden="true">←</span> Back to portfolio</a>
+    <div class="hero-art" id="heroArt" aria-hidden="true"></div>
+    <div class="kicker">PROJECT 1 · AIRFOIL AERODYNAMICS</div>
+    <h1 id="title">Airfoil Aerodynamics</h1>
+    <p class="question">Central question: <em>how does the angle of attack of an airfoil affect its lift, drag, and aerodynamic efficiency?</em> Adjust the parameters below to explore a NACA 4-digit airfoil under an incompressible potential-flow model with a Reynolds-number-driven viscous drag correction.</p>
+  </header>
+
+  <div class="grid">
+    <!-- ===================== CONTROLS ===================== -->
+    <div>
+      <div class="panel">
+        <h2>Airfoil &amp; flow parameters</h2>
+
+        <div class="field">
+          <label>NACA 4-digit code</label>
+          <div class="naca-row">
+            <input type="text" id="nacaCode" class="mono" value="0012" maxlength="4" inputmode="numeric">
+            <button class="mini" id="applyNaca">Apply</button>
+          </div>
+          <div class="presets">
+            <button class="mini" data-naca="0006">0006</button>
+            <button class="mini" data-naca="0012">0012</button>
+            <button class="mini" data-naca="0018">0018</button>
+            <button class="mini" data-naca="2412">2412</button>
+            <button class="mini" data-naca="4412">4412</button>
+          </div>
+          <div class="hint">First digit: max camber (%c). Second: camber position (x/10 c). Last two: thickness (%c).</div>
+        </div>
+
+        <div class="field">
+          <label>Angle of attack <span class="val" id="alphaVal">8.0°</span></label>
+          <input type="range" id="alpha" min="-20" max="24" step="0.5" value="8">
+          <div class="rangewrap"><span>−20°</span><span>24°</span></div>
+        </div>
+
+        <div class="field">
+          <label>Air velocity (V∞) <span class="val" id="vVal">30 m/s</span></label>
+          <input type="range" id="vinf" min="5" max="120" step="1" value="30">
+          <div class="rangewrap"><span>5</span><span>120 m/s</span></div>
+        </div>
+
+        <div class="field">
+          <label>Altitude / air density</label>
+          <select id="altitude">
+            <option value="0">Sea level — ρ = 1.225 kg/m³</option>
+            <option value="1500">1,500 m — ρ = 1.058 kg/m³</option>
+            <option value="3000">3,000 m — ρ = 0.909 kg/m³</option>
+            <option value="6000">6,000 m — ρ = 0.660 kg/m³</option>
+            <option value="9000">9,000 m — ρ = 0.467 kg/m³</option>
+            <option value="custom">Custom ρ…</option>
+          </select>
+          <input type="range" id="rhoCustom" min="0.05" max="1.5" step="0.005" value="1.225" style="margin-top:10px;display:none">
+        </div>
+
+        <div class="field">
+          <label>Chord length (c) <span class="val" id="chordVal">1.00 m</span></label>
+          <input type="range" id="chord" min="0.1" max="4" step="0.05" value="1.0">
+          <div class="rangewrap"><span>0.1 m</span><span>4 m</span></div>
+        </div>
+
+        <div class="field">
+          <label>Span (for total-force display only) <span class="val" id="spanVal">3.0 m</span></label>
+          <input type="range" id="span" min="0.5" max="20" step="0.5" value="3">
+          <div class="hint">The core solution is 2D (per unit span); span only scales the "total force" readout, assuming a straight, untapered wing.</div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>Angle-of-attack sweep</h2>
+        <button class="sweep-btn" id="sweepBtn">
+          <svg id="sweepIcon" width="14" height="14" viewBox="0 0 14 14"><polygon points="2,1 13,7 2,13" fill="currentColor"/></svg>
+          <svg id="pauseIcon" width="14" height="14" viewBox="0 0 14 14"><rect x="2" y="1" width="4" height="12" fill="currentColor"/><rect x="8" y="1" width="4" height="12" fill="currentColor"/></svg>
+          <span id="sweepLabel">Play sweep</span>
+        </button>
+        <div class="hint">Automatically sweeps α from −20° to 24° and back, so you can watch lift build, peak, and stall without touching the slider.</div>
+      </div>
+    </div>
+
+    <!-- ===================== VISUALIZATION + CHARTS ===================== -->
+    <div>
+      <div class="panel viz-card">
+        <div class="viz-top">
+          <h2>Flow field &amp; surface pressure</h2>
+          <div class="legend">
+            <span><i class="dot" style="background:#3d6fd6"></i>low C<sub>p</sub> (suction)</span>
+            <span><i class="dot" style="background:#d65b3d"></i>high C<sub>p</sub> (pressure)</span>
+            <span><i class="dot" style="background:#5fd88f"></i>lift</span>
+            <span><i class="dot" style="background:#f2c94c"></i>drag</span>
+            <span><i style="width:14px;height:0;border-top:1px dashed rgba(255,255,255,.55);display:inline-block"></i>true NACA outline</span>
+          </div>
+        </div>
+        <svg id="viz" viewBox="0 0 1000 560" width="1000" height="560" preserveAspectRatio="xMidYMid meet"></svg>
+        <div class="stall-flag" id="stallFlag">⚠ Past the estimated stall angle for this geometry &amp; Reynolds number — flow is separating; lift is falling off and drag is rising sharply.</div>
+
+        <div class="hud">
+          <div class="hud-item hero"><div class="hud-lbl">C<sub>L</sub></div><div class="hud-num" id="outCl">–</div></div>
+          <div class="hud-item"><div class="hud-lbl">C<sub>D</sub></div><div class="hud-num" id="outCd">–</div></div>
+          <div class="hud-item"><div class="hud-lbl">L/D</div><div class="hud-num" id="outLD">–</div></div>
+          <div class="hud-item"><div class="hud-lbl">Lift/span</div><div class="hud-num" id="outL"><span class="n">–</span><span class="hud-unit">N/m</span></div></div>
+          <div class="hud-item"><div class="hud-lbl">Drag/span</div><div class="hud-num" id="outD"><span class="n">–</span><span class="hud-unit">N/m</span></div></div>
+          <div class="hud-item"><div class="hud-lbl">Reynolds</div><div class="hud-num" id="outRe">–</div></div>
+        </div>
+        <div class="hud-total" id="outTotal">–</div>
+      </div>
+
+      <div class="panel chart-panel">
+        <div class="tabs" id="chartTabs">
+          <button class="tab active" data-tab="cl">C<sub>L</sub> vs. α</button>
+          <button class="tab" data-tab="cd">C<sub>D</sub> vs. α</button>
+          <button class="tab" data-tab="ld">L/D vs. α</button>
+          <button class="tab" data-tab="polar">Drag polar</button>
+        </div>
+        <svg id="chartSvg" viewBox="0 0 900 320" preserveAspectRatio="xMidYMid meet"></svg>
+        <div class="chart-hint">Hover to inspect a point · click to set α there</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== ABOUT / METHODOLOGY ===================== -->
+  <div class="panel about">
+    <h2 style="text-transform:uppercase;letter-spacing:.1em;font-size:13px;color:var(--text-2);margin-bottom:14px">About this model</h2>
+    <p>This tool solves the 2D, incompressible, inviscid limit of the Navier–Stokes equations — the potential-flow equations — <strong style="color:var(--text-0)">exactly</strong>, via a Joukowski conformal transform calibrated to the requested NACA thickness ratio, rather than by discretizing the airfoil into panels. That avoids the numerical instabilities that naive panel-method implementations are prone to, at the cost of being restricted to this airfoil family (camber is added back in through classical thin-airfoil theory as a zero-lift-angle shift).</p>
+    <div class="grid2">
+      <div>
+        <h4>Lift &amp; pressure (inviscid)</h4>
+        <p>The airfoil shape is treated as the conformal image of a circle (<code>z = ζ + 1/ζ</code>). Flow around the circle — uniform stream + doublet + a bound vortex — has a closed-form complex potential; circulation is fixed by the Kutta condition (smooth flow off the trailing edge). Lift follows exactly from the Kutta–Joukowski theorem, <code>L' = ρV∞Γ</code>, and surface velocity/C<sub>p</sub> come from <code>dW/dz</code> evaluated on the mapped boundary. Streamlines are integrated in the simple circle plane, then mapped through the same transform.</p>
+      </div>
+      <div>
+        <h4>Drag &amp; stall (viscous, semi-empirical)</h4>
+        <p>Potential flow alone predicts zero drag (d'Alembert's paradox), so C<sub>D</sub> is built from Reynolds-number-dependent flat-plate skin friction (Blasius/Schlichting) with a thickness form factor, plus a lift-dependent profile-drag term. This is a 2D (infinite-span) analysis, so there is no 3D induced drag. Stall is approximated with a smooth empirical roll-off past a Reynolds-dependent critical angle, in the spirit of engineering post-stall extrapolations — it is <em>not</em> a resolved boundary-layer separation.</p>
+      </div>
+    </div>
+    <p class="footnote">
+      <strong style="color:var(--text-1)">On "real" CFD:</strong> fully resolving the Navier–Stokes equations (a meshed, iterative finite-volume solve — e.g. OpenFOAM, SU2) captures boundary-layer separation, turbulence, and deep-stall behavior that this model only approximates, but it can't run interactively in a browser — a single case typically takes minutes to hours. A natural next phase for this project is to run such a solver offline across an angle-of-attack sweep and compare its C<sub>L</sub>/C<sub>D</sub> polar against this potential-flow model, to map out exactly where the inviscid+empirical approximation breaks down.
+    </p>
+  </div>
+
+</div>
+
+<script>
+/* =========================================================================
+   PHYSICS ENGINE  (validated closed-form Joukowski potential flow +
+   thin-airfoil-theory camber correction + semi-empirical viscous drag/stall)
+   ========================================================================= */
+
+function naca4Params(code){
+  const m = Math.floor(code/1000)/100;
+  const p = Math.floor((code%1000)/100)/10;
+  const t = (code%100)/100;
+  return {m,p,t};
+}
+function camberSlope(x,m,p){
+  if (m===0 || p===0) return 0;
+  if (x<p) return (2*m/(p*p))*(p-x);
+  return (2*m/((1-p)*(1-p)))*(p-x);
+}
+function camberY(x,m,p){
+  if (m===0 || p===0) return 0;
+  if (x<p) return (m/(p*p))*(2*p*x-x*x);
+  return (m/((1-p)*(1-p)))*((1-2*p)+2*p*x-x*x);
+}
+function thicknessY(x,t){
+  return 5*t*(0.2969*Math.sqrt(Math.max(x,0)) - 0.1260*x - 0.3516*x*x + 0.2843*x*x*x - 0.1015*x*x*x*x);
+}
+function zeroLiftAngle(m,p){
+  if (m===0) return 0;
+  const N=400; let integral=0;
+  for(let k=0;k<N;k++){
+    const th=((k+0.5)/N)*Math.PI;
+    const x=(1-Math.cos(th))/2;
+    integral += camberSlope(x,m,p)*(Math.cos(th)-1)*(Math.PI/N);
+  }
+  return -(1/Math.PI)*integral;
+}
+function naca4Geometry(code, nPerSide){
+  const {m,p,t} = naca4Params(code);
+  const upper=[], lower=[];
+  for(let i=0;i<=nPerSide;i++){
+    const beta = i*Math.PI/nPerSide;
+    const x = (1-Math.cos(beta))/2;
+    const yt = thicknessY(x,t);
+    const yc = camberY(x,m,p);
+    const dyc = camberSlope(x,m,p);
+    const th = Math.atan(dyc);
+    upper.push({x:x-yt*Math.sin(th), y:yc+yt*Math.cos(th)});
+    lower.push({x:x+yt*Math.sin(th), y:yc-yt*Math.cos(th)});
+  }
+  return {upper, lower};
+}
+
+function circleToAirfoil(zr,zi){
+  const r2=zr*zr+zi*zi;
+  return {x: zr+zr/r2, y: zi-zi/r2};
+}
+function calibrateThickness(targetTC){
+  function thicknessForEps(eps){
+    const b=1+eps; let maxT=0,minX=Infinity,maxX=-Infinity;
+    const M=300;
+    for(let k=0;k<=M;k++){
+      const th=(k/M)*2*Math.PI;
+      const pt=circleToAirfoil(-eps+b*Math.cos(th), b*Math.sin(th));
+      if(pt.x<minX) minX=pt.x;
+      if(pt.x>maxX) maxX=pt.x;
+      if(Math.abs(pt.y)>maxT) maxT=Math.abs(pt.y);
+    }
+    const chord=maxX-minX;
+    return {t:(2*maxT)/chord, chord, minX, maxX};
+  }
+  let lo=0.001, hi=0.28;
+  for(let it=0; it<50; it++){
+    const mid=(lo+hi)/2;
+    if(thicknessForEps(mid).t < targetTC) lo=mid; else hi=mid;
+  }
+  const eps=(lo+hi)/2;
+  const geo=thicknessForEps(eps);
+  return {eps, b:1+eps, chord:geo.chord, minX:geo.minX, maxX:geo.maxX};
+}
+const _calibCache = new Map();
+function getCalibration(t){
+  const key=Math.round(t*1000);
+  if(!_calibCache.has(key)) _calibCache.set(key, calibrateThickness(t));
+  return _calibCache.get(key);
+}
+
+// General-point velocity in the circle (zeta) plane -- used for both surface Cp and streamlines.
+function velocityAtZeta(calib, alphaEff, Vinf, zr, zi){
+  const {eps,b}=calib;
+  const dzr=zr-(-eps), dzi=zi-0;
+  const t1re=Vinf*Math.cos(-alphaEff), t1im=Vinf*Math.sin(-alphaEff);
+  const dz2re=dzr*dzr-dzi*dzi, dz2im=2*dzr*dzi;
+  const dz2mag2=Math.max(dz2re*dz2re+dz2im*dz2im,1e-12);
+  const inv2re=dz2re/dz2mag2, inv2im=-dz2im/dz2mag2;
+  const eiaRe=Math.cos(alphaEff), eiaIm=Math.sin(alphaEff);
+  const aRe=Vinf*b*b*(eiaRe*inv2re-eiaIm*inv2im);
+  const aIm=Vinf*b*b*(eiaRe*inv2im+eiaIm*inv2re);
+  const t2re=-aRe, t2im=-aIm;
+  const Gamma=4*Math.PI*Vinf*b*Math.sin(alphaEff);
+  const dzmag2=Math.max(dzr*dzr+dzi*dzi,1e-12);
+  const invre=dzr/dzmag2, invim=-dzi/dzmag2;
+  const coef=Gamma/(2*Math.PI);
+  const t3re=-coef*invim, t3im=coef*invre;
+  const dWre=t1re+t2re+t3re, dWim=t1im+t2im+t3im;
+  return {u:dWre, v:-dWim};
+}
+// Velocity AND local Cp/surface-speed, for points on the circle boundary (theta parametrized).
+function surfaceSample(calib, alphaEff, theta){
+  const {eps,b}=calib;
+  const zr=-eps+b*Math.cos(theta), zi=b*Math.sin(theta);
+  const {u,v} = velocityAtZeta(calib, alphaEff, 1, zr, zi);
+  // dz/dzeta = 1 - 1/zeta^2, zeta=(zr,zi) here is the absolute point (not offset)
+  const zmag2=zr*zr+zi*zi;
+  const invZre=zr/zmag2, invZim=-zi/zmag2;
+  const invZ2re=invZre*invZre-invZim*invZim, invZ2im=2*invZre*invZim;
+  const dzdZre=1-invZ2re, dzdZim=-invZ2im;
+  const denom=dzdZre*dzdZre+dzdZim*dzdZim;
+  // physical dW/dz = (dW/dzeta)/(dz/dzeta); but velocityAtZeta already returned (u,v) as if dz/dzeta=1
+  // (that's the circle-plane velocity). For points ON/near the physical airfoil we need the true
+  // physical surface speed = |dW/dzeta| / |dz/dzeta| (magnitude relation for analytic maps).
+  const dWmag = Math.hypot(u,v); // note: (u,v) here = (Re,−Im)(dW/dzeta); magnitude unaffected by the sign flip
+  const dzdZmag = Math.sqrt(denom);
+  const speed = dWmag/dzdZmag;
+  const p = circleToAirfoil(zr,zi);
+  return {speed, Cp:1-speed*speed, x:p.x, y:p.y};
+}
+
+function stallAngleDeg(Re){
+  const a = 13 + 2.2*Math.log10(Math.max(Re,1e4)/5e5);
+  return Math.min(18, Math.max(8,a));
+}
+function stallLiftFactor(alphaDeg, alphaStallDeg){
+  const a=Math.abs(alphaDeg);
+  if(a<=alphaStallDeg) return 1;
+  const d=a-alphaStallDeg, width=6, t=Math.min(d/width,1), floor=0.35;
+  return floor + (1-floor)*0.5*(1+Math.cos(Math.PI*t));
+}
+function separationDragAdd(alphaDeg, alphaStallDeg){
+  const a=Math.abs(alphaDeg);
+  if(a<=alphaStallDeg) return 0;
+  const d=a-alphaStallDeg;
+  return 0.028*d + 0.0035*d*d;
+}
+function skinFrictionCf(Re){
+  if(Re<3e5) return 1.328/Math.sqrt(Math.max(Re,1e3));
+  return 0.074/Math.pow(Re,0.2);
+}
+
+function computeAerodynamics(params){
+  const {nacaCode, alphaDeg, Vinf, rho, chord, mu} = params;
+  const {m,p,t} = naca4Params(nacaCode);
+  const calib = getCalibration(t);
+  const alpha0 = zeroLiftAngle(m,p);
+  const alpha = alphaDeg*Math.PI/180;
+  const alphaEff = alpha - alpha0;
+
+  const thicknessFactor = calib.b;
+  const Cl_inviscid = 2*Math.PI*thicknessFactor*Math.sin(alphaEff);
+
+  const Re = (rho*Vinf*chord)/mu;
+  const alphaStallDeg = stallAngleDeg(Re);
+  const stallFactor = stallLiftFactor(alphaDeg, alphaStallDeg);
+  const Cl = Cl_inviscid*stallFactor;
+
+  const Cf = skinFrictionCf(Re);
+  const formFactor = 1 + 2*t + 60*Math.pow(t,4);
+  const Cd0 = 2*Cf*formFactor;
+  const k = 0.02;
+  const Cd = Cd0 + k*Cl*Cl + separationDragAdd(alphaDeg, alphaStallDeg);
+
+  const q = 0.5*rho*Vinf*Vinf;
+  const L = Cl*q*chord;
+  const D = Cd*q*chord;
+  const LD = Cd>1e-9 ? Cl/Cd : 0;
+
+  return {Cl,Cd,L,D,LD,Re,alphaStallDeg,alpha0Deg:alpha0*180/Math.PI, calib, alphaEff, isStalled: Math.abs(alphaDeg)>alphaStallDeg};
+}
+
+function computeStreamline(calib, alphaEff, y0){
+  const {eps,b}=calib;
+  let zr=-6*b, zi=y0;
+  const path=[[zr,zi]];
+  const dt=0.045, maxSteps=420;
+  for(let step=0; step<maxSteps; step++){
+    const dist=Math.hypot(zr-(-eps), zi);
+    if(dist < b*1.015) break;
+    if(zr > 6.2*b) break;
+    const k1=velocityAtZeta(calib,alphaEff,1,zr,zi);
+    const k2=velocityAtZeta(calib,alphaEff,1,zr+k1.u*dt/2, zi+k1.v*dt/2);
+    const k3=velocityAtZeta(calib,alphaEff,1,zr+k2.u*dt/2, zi+k2.v*dt/2);
+    const k4=velocityAtZeta(calib,alphaEff,1,zr+k3.u*dt, zi+k3.v*dt);
+    zr += (dt/6)*(k1.u+2*k2.u+2*k3.u+k4.u);
+    zi += (dt/6)*(k1.v+2*k2.v+2*k3.v+k4.v);
+    if(!isFinite(zr)||!isFinite(zi)) break;
+    path.push([zr,zi]);
+  }
+  return path;
+}
+
+/* =========================================================================
+   RENDERING
+   ========================================================================= */
+const SVG_NS = "http://www.w3.org/2000/svg";
+function el(tag, attrs){
+  const e = document.createElementNS(SVG_NS, tag);
+  for(const k in attrs) e.setAttribute(k, attrs[k]);
+  return e;
+}
+
+// Diverging colormap: Cp very negative (suction) -> blue, Cp ~ +1 (stagnation) -> warm orange/red.
+function cpColor(cp){
+  // clamp for color mapping purposes
+  const c = Math.max(-4, Math.min(1, cp));
+  const t = (c - (-4)) / (1 - (-4)); // 0 (blue) .. 1 (red)
+  const stops = [
+    [0.00, [61, 111, 214]],   // deep blue (strong suction)
+    [0.55, [70, 90, 120]],    // neutral dark blue-grey (~Cp 0)
+    [0.72, [214, 150, 80]],
+    [1.00, [214, 91, 61]],    // warm orange-red (stagnation)
+  ];
+  let a=stops[0], b=stops[stops.length-1];
+  for(let i=0;i<stops.length-1;i++){
+    if(t>=stops[i][0] && t<=stops[i+1][0]){ a=stops[i]; b=stops[i+1]; break; }
+  }
+  const span = (b[0]-a[0])||1;
+  const f = (t-a[0])/span;
+  const rgb = [0,1,2].map(i => Math.round(a[1][i] + (b[1][i]-a[1][i])*f));
+  return `rgb(${rgb[0]},${rgb[1]},${rgb[2]})`;
+}
+
+const svg = document.getElementById('viz');
+const VB_W = 1000, VB_H = 560;
+
+function frameFor(calib, chordFactor){
+  const chord = calib.chord;
+  const baseWidth = 560 * (chordFactor||1);
+  const scale = baseWidth/chord;
+  const centerX = 520, originY = 300;
+  const originX = centerX - baseWidth/2;
+  return {
+    toSvg: (x,y) => [ originX + (x-calib.minX)*scale, originY - y*scale ],
+    scale
+  };
+}
+function chordVisualFactor(chordM){
+  // maps the 0.1-4 m chord slider to a visible-but-contained size range
+  return Math.min(1.3, Math.max(0.65, 0.65 + (chordM-0.1)/(4-0.1)*0.65));
+}
+
+let streamCache = []; // [{pts:[[sx,sy],...], len:Number}] in current SVG coords, refreshed by renderViz
+let wakeInfo = null;  // set by renderViz when the airfoil is stalled; drives the animated turbulent wake
+let wakeT = 0;
+let flowSpeedRef = 1;  // current V_inf (m/s), used to scale particle animation speed
+
+function renderViz(state, result){
+  while(svg.firstChild) svg.removeChild(svg.firstChild);
+  const calib = result.calib;
+  const frame = frameFor(calib, chordVisualFactor(state.chord));
+  const alphaEffRad = result.alphaEff;
+  flowSpeedRef = state.vinf;
+
+  // --- background grid ---
+  const bg = el('rect',{x:0,y:0,width:VB_W,height:VB_H,fill:'transparent'});
+  svg.appendChild(bg);
+
+  // --- streamlines (drawn first, behind airfoil) ---
+  const gStream = el('g', {opacity:0.4});
+  svg.appendChild(gStream);
+  const b = calib.b;
+  const offsets = [-2.6,-1.9,-1.3,-0.8,-0.35, 0.35,0.8,1.3,1.9,2.6];
+  streamCache = [];
+  for(const off of offsets){
+    const path = computeStreamline(calib, alphaEffRad, off*b);
+    if(path.length<2) continue;
+    let d = '';
+    const svgPts = [];
+    for(let i=0;i<path.length;i++){
+      const p = circleToAirfoil(path[i][0], path[i][1]);
+      const [sx,sy] = frame.toSvg(p.x,p.y);
+      svgPts.push([sx,sy]);
+      d += (i===0? 'M':'L') + sx.toFixed(1) + ',' + sy.toFixed(1) + ' ';
+    }
+    gStream.appendChild(el('path',{d, fill:'none', stroke:'#5b9dff', 'stroke-width':1}));
+    streamCache.push(svgPts);
+  }
+
+  // --- animated flow particles (moving dots riding each streamline) ---
+  const gParticles = el('g', {id:'particleLayer'});
+  svg.appendChild(gParticles);
+  const PARTICLES_PER_LINE = 3;
+  streamCache.forEach((pts, li)=>{
+    for(let k=0;k<PARTICLES_PER_LINE;k++){
+      // each particle drags a short fading tail (4 dots at decreasing size/opacity)
+      for(let j=0;j<4;j++){
+        const c = el('circle',{r:(2.7 - j*0.55).toFixed(2), fill:'#bcd9ff', opacity:0,
+          'data-line':li, 'data-phase':(k/PARTICLES_PER_LINE).toFixed(3),
+          'data-off':(-j*0.011).toFixed(3), 'data-fade':(1 - j*0.27).toFixed(2)});
+        gParticles.appendChild(c);
+      }
+    }
+  });
+
+  // --- airfoil silhouette (fill) ---
+  const NPTS = 140;
+  let fillD = '';
+  const surfPts = [];
+  for(let i=0;i<=NPTS;i++){
+    const theta = (i/NPTS)*2*Math.PI + 0.0025; // tiny offset avoids exact-cusp singularity
+    const s = surfaceSample(calib, alphaEffRad, theta);
+    surfPts.push(s);
+    const [sx,sy] = frame.toSvg(s.x,s.y);
+    fillD += (i===0? 'M':'L') + sx.toFixed(2) + ',' + sy.toFixed(2) + ' ';
+  }
+  fillD += 'Z';
+  svg.appendChild(el('path',{d:fillD, fill:'#0e1520', stroke:'none'}));
+
+  // --- pressure ribbon: short colored ticks just outside the surface ---
+  const gCp = el('g',{style:'filter:drop-shadow(0 0 5px rgba(91,157,255,.35))'});
+  svg.appendChild(gCp);
+  for(let i=0;i<NPTS;i++){
+    const s0=surfPts[i], s1=surfPts[i+1];
+    const [x0,y0]=frame.toSvg(s0.x,s0.y);
+    const [x1,y1]=frame.toSvg(s1.x,s1.y);
+    const cpAvg=(s0.Cp+s1.Cp)/2;
+    const line = el('line',{x1:x0.toFixed(2),y1:y0.toFixed(2),x2:x1.toFixed(2),y2:y1.toFixed(2),
+      stroke:cpColor(cpAvg), 'stroke-width':5, 'stroke-linecap':'round'});
+    gCp.appendChild(line);
+  }
+  // crisp outline on top
+  svg.appendChild(el('path',{d:fillD, fill:'none', stroke:'rgba(255,255,255,0.28)', 'stroke-width':1.2}));
+
+  // --- true NACA outline overlay (dashed), for transparency about the Joukowski approximation ---
+  const trueGeo = naca4Geometry(state.nacaCode, 60);
+  let nacaD = '';
+  trueGeo.upper.slice().reverse().concat(trueGeo.lower.slice(1)).forEach((pt,i)=>{
+    const xp = calib.minX + pt.x*calib.chord, yp = pt.y*calib.chord;
+    const [sx,sy] = frame.toSvg(xp,yp);
+    nacaD += (i===0?'M':'L') + sx.toFixed(2) + ',' + sy.toFixed(2) + ' ';
+  });
+  svg.appendChild(el('path',{d:nacaD, fill:'none', stroke:'rgba(255,255,255,0.55)', 'stroke-width':1, 'stroke-dasharray':'3 3'}));
+
+  // --- freestream direction indicator (top-left) ---
+  const fsLen=70, fx0=70, fy0=90;
+  const fx1 = fx0 + fsLen*Math.cos(alphaEffResultAngle(result));
+  const fy1 = fy0 - fsLen*Math.sin(alphaEffResultAngle(result));
+  svg.appendChild(arrow(fx0,fy0,fx1,fy1,'#8a97ab',2));
+  const fsLabel = el('text',{x:fx0-4, y:fy0-14, fill:'#6c7789', 'font-size':11, 'font-family':'JetBrains Mono, monospace'});
+  fsLabel.textContent = 'V∞';
+  svg.appendChild(fsLabel);
+
+  // --- force vectors from quarter-chord ---
+  const qc = { x: calib.minX + 0.25*calib.chord, y: 0 };
+  const [qx,qy] = frame.toSvg(qc.x, qc.y);
+  const flowAngle = result.__flowAngle; // geometric alpha, relative to the horizontal chord
+  const liftDir = [ -Math.sin(flowAngle), Math.cos(flowAngle) ];
+  const dragDir = [ Math.cos(flowAngle), Math.sin(flowAngle) ];
+  const Lmag = Math.max(-2, Math.min(2, result.Cl)); // scale by Cl (bounded) for consistent visual length
+  const Dmag = Math.max(0, Math.min(1, result.Cd*6));
+  const LEN = 130;
+  const lx = qx + liftDir[0]*Lmag*LEN, ly = qy - liftDir[1]*Lmag*LEN;
+  const dx = qx + dragDir[0]*Dmag*LEN, dy = qy - dragDir[1]*Dmag*LEN;
+  svg.appendChild(arrow(qx,qy,lx,ly,'#5fd88f',3));
+  svg.appendChild(arrow(qx,qy,dx,dy,'#f2c94c',3));
+  svg.appendChild(el('circle',{cx:qx,cy:qy,r:3.5,fill:'#e8edf5'}));
+
+  const llabel = el('text',{x:lx+6,y:ly, fill:'#5fd88f','font-size':12,'font-family':'JetBrains Mono, monospace','font-weight':600});
+  llabel.textContent='L';
+  svg.appendChild(llabel);
+  const dlabel = el('text',{x:dx+6,y:dy+14, fill:'#f2c94c','font-size':12,'font-family':'JetBrains Mono, monospace','font-weight':600});
+  dlabel.textContent='D';
+  svg.appendChild(dlabel);
+
+  // --- turbulent wake (only when stalled): separated-flow eddies drifting off the suction side ---
+  wakeInfo = null;
+  if(result.isStalled){
+    const sgn = state.alpha > 0 ? 1 : -1;
+    const targetX = calib.minX + 0.5*calib.chord;
+    let best = null;
+    for(const sp of surfPts){ if(sgn*sp.y > 0 && (!best || Math.abs(sp.x-targetX) < Math.abs(best.x-targetX))) best = sp; }
+    if(best){
+      const [wx,wy] = frame.toSvg(best.x,best.y);
+      const exc = Math.min(1, (Math.abs(state.alpha)-result.alphaStallDeg)/8);
+      wakeInfo = {x:wx, y:wy, sign:sgn, scale:frame.scale, exc};
+      const gWake = el('g',{id:'wakeLayer'});
+      for(let i=0;i<18;i++) gWake.appendChild(el('circle',{r:3, fill:'#ff8a5c', opacity:0, 'data-seed':(i/18).toFixed(3)}));
+      svg.appendChild(gWake);
+    }
+  }
+
+  // --- chord reference line + AoA readout ---
+  const [cx0,cy0] = frame.toSvg(calib.minX,0);
+  const [cx1,cy1] = frame.toSvg(calib.maxX,0);
+  svg.appendChild(el('line',{x1:cx0,y1:cy0,x2:cx1,y2:cy1, stroke:'rgba(255,255,255,0.15)', 'stroke-dasharray':'4 4'}));
+
+  // --- Cp colorbar legend (bottom) ---
+  const barX=210, barY=520, barW=200, barH=10;
+  const grad = el('linearGradient',{id:'cpgrad', x1:'0%',y1:'0%',x2:'100%',y2:'0%'});
+  [0,0.25,0.5,0.75,1].forEach(t=>{
+    const cpVal = -4 + t*5;
+    grad.appendChild(el('stop',{offset:(t*100)+'%','stop-color':cpColor(cpVal)}));
+  });
+  const defs = el('defs',{}); defs.appendChild(grad); svg.appendChild(defs);
+  svg.appendChild(el('rect',{x:barX,y:barY,width:barW,height:barH,fill:'url(#cpgrad)',rx:3}));
+  const t1=el('text',{x:barX,y:barY-6,fill:'#6c7789','font-size':10,'font-family':'JetBrains Mono, monospace'}); t1.textContent='C_p low (suction)';
+  const t2=el('text',{x:barX+barW,y:barY-6,fill:'#6c7789','font-size':10,'font-family':'JetBrains Mono, monospace','text-anchor':'end'}); t2.textContent='C_p high';
+  svg.appendChild(t1); svg.appendChild(t2);
+}
+
+function alphaEffResultAngle(result){
+  // freestream direction angle used for the visual indicator = geometric alpha (radians)
+  return result.__flowAngle;
+}
+function arrow(x0,y0,x1,y1,color,width){
+  const g = el('g',{});
+  g.appendChild(el('line',{x1:x0,y1:y0,x2:x1,y2:y1,stroke:color,'stroke-width':width,'stroke-linecap':'round'}));
+  const ang = Math.atan2(y1-y0,x1-x0);
+  const ah = 9;
+  const p1 = [x1 - ah*Math.cos(ang-0.4), y1 - ah*Math.sin(ang-0.4)];
+  const p2 = [x1 - ah*Math.cos(ang+0.4), y1 - ah*Math.sin(ang+0.4)];
+  g.appendChild(el('polygon',{points:`${x1},${y1} ${p1[0]},${p1[1]} ${p2[0]},${p2[1]}`, fill:color}));
+  return g;
+}
+
+
+/* =========================================================================
+   PERFORMANCE CHARTS  (hand-drawn SVG -- no external library, so sizing is
+   entirely self-computed and can never overflow or overlap other content)
+   ========================================================================= */
+const chartSvg = document.getElementById('chartSvg');
+const CH_W = 900, CH_H = 320;
+const CH_PAD = {l:56, r:24, t:18, b:40};
+let activeTab = 'cl';
+let chartAnim = false; // true => next chart render draws its curve on (tab / airfoil change)
+let sweepData = null; // {alphas, cl, cd, ld} for the current NACA/V/rho/chord, refreshed by recompute()
+
+const TAB_DEFS = {
+  cl:    { key:'cl',  yLabel:'C_L',  color:'#5b9dff', fmt:v=>v.toFixed(3) },
+  cd:    { key:'cd',  yLabel:'C_D',  color:'#f2c94c', fmt:v=>v.toFixed(4) },
+  ld:    { key:'ld',  yLabel:'L/D',  color:'#5fd88f', fmt:v=>v.toFixed(2) },
+  polar: { key:'polar', yLabel:'C_L', xLabel:'C_D', color:'#c792ea', fmt:v=>v.toFixed(3) },
+};
+
+function computeSweep(state){
+  const alphas=[], cl=[], cd=[], ld=[];
+  for(let a=-20;a<=24;a+=1){
+    const r = computeAerodynamics({nacaCode:state.nacaCode, alphaDeg:a, Vinf:state.vinf, rho:state.rho, chord:state.chord, mu:MU_AIR});
+    alphas.push(a); cl.push(r.Cl); cd.push(r.Cd); ld.push(r.LD);
+  }
+  return {alphas, cl, cd, ld};
+}
+
+function niceTicks(min, max, count){
+  if (max<=min) max = min+1;
+  const span = max-min;
+  const raw = span/count;
+  const mag = Math.pow(10, Math.floor(Math.log10(raw)));
+  const norm = raw/mag;
+  const step = (norm<1.5?1:norm<3?2:norm<7?5:10)*mag;
+  const start = Math.ceil(min/step)*step;
+  const ticks=[];
+  for(let v=start; v<=max+1e-9; v+=step) ticks.push(Math.round(v*1e6)/1e6);
+  return ticks;
+}
+
+function renderChart(){
+  while(chartSvg.firstChild) chartSvg.removeChild(chartSvg.firstChild);
+  if(!sweepData) return;
+  const def = TAB_DEFS[activeTab];
+  const isPolar = activeTab==='polar';
+  const xs = isPolar ? sweepData.cd : sweepData.alphas;
+  const ys = isPolar ? sweepData.cl : sweepData[def.key];
+
+  const xMin = Math.min(...xs), xMax = Math.max(...xs);
+  const yMinRaw = Math.min(...ys,0), yMaxRaw = Math.max(...ys);
+  const yPad = (yMaxRaw-yMinRaw)*0.1 || 0.1;
+  const yMin = yMinRaw-yPad, yMax = yMaxRaw+yPad;
+
+  const plotW = CH_W-CH_PAD.l-CH_PAD.r, plotH = CH_H-CH_PAD.t-CH_PAD.b;
+  const sx = x => CH_PAD.l + (x-xMin)/(xMax-xMin||1)*plotW;
+  const sy = y => CH_PAD.t + plotH - (y-yMin)/(yMax-yMin||1)*plotH;
+
+  // gridlines + axis ticks
+  const yTicks = niceTicks(yMin, yMax, 5);
+  yTicks.forEach(t=>{
+    const y = sy(t);
+    chartSvg.appendChild(el('line',{x1:CH_PAD.l,y1:y,x2:CH_W-CH_PAD.r,y2:y, stroke:'rgba(255,255,255,0.06)'}));
+    const lbl = el('text',{x:CH_PAD.l-8,y:y+4, fill:'#6c7789','font-size':10,'font-family':'JetBrains Mono, monospace','text-anchor':'end'});
+    lbl.textContent = def.fmt(t); chartSvg.appendChild(lbl);
+  });
+  const xTicks = niceTicks(xMin, xMax, isPolar?6:8);
+  xTicks.forEach(t=>{
+    const x = sx(t);
+    const lbl = el('text',{x, y:CH_H-CH_PAD.b+18, fill:'#6c7789','font-size':10,'font-family':'JetBrains Mono, monospace','text-anchor':'middle'});
+    lbl.textContent = isPolar? t.toFixed(3) : t.toFixed(0)+'°';
+    chartSvg.appendChild(lbl);
+  });
+  // zero line
+  if(yMin<0 && yMax>0){
+    chartSvg.appendChild(el('line',{x1:CH_PAD.l,y1:sy(0),x2:CH_W-CH_PAD.r,y2:sy(0), stroke:'rgba(255,255,255,0.16)'}));
+  }
+  // axis labels
+  const xAxisLbl = el('text',{x:(CH_PAD.l+CH_W-CH_PAD.r)/2, y:CH_H-6, fill:'#6c7789','font-size':10.5,'font-family':'JetBrains Mono, monospace','text-anchor':'middle'});
+  xAxisLbl.textContent = isPolar? 'C_D' : 'α (deg)';
+  chartSvg.appendChild(xAxisLbl);
+
+  // curve
+  let d='';
+  xs.forEach((x,i)=>{ d += (i===0?'M':'L') + sx(x).toFixed(2)+','+sy(ys[i]).toFixed(2)+' '; });
+  const defsEl = el('defs',{});
+  const ag = el('linearGradient',{id:'areaGrad',x1:0,y1:0,x2:0,y2:1});
+  ag.appendChild(el('stop',{offset:'0%','stop-color':def.color,'stop-opacity':0.28}));
+  ag.appendChild(el('stop',{offset:'100%','stop-color':def.color,'stop-opacity':0}));
+  defsEl.appendChild(ag); chartSvg.appendChild(defsEl);
+  let areaEl = null;
+  if(!isPolar){
+    const base = Math.min(CH_H-CH_PAD.b, Math.max(CH_PAD.t, sy(0)));
+    areaEl = el('path',{d: d + 'L'+sx(xs[xs.length-1]).toFixed(2)+','+base.toFixed(2)+' L'+sx(xs[0]).toFixed(2)+','+base.toFixed(2)+' Z', fill:'url(#areaGrad)', stroke:'none'});
+    chartSvg.appendChild(areaEl);
+  }
+  const curveEl = el('path',{d, fill:'none', stroke:def.color, 'stroke-width':2.2, 'stroke-linejoin':'round'});
+  chartSvg.appendChild(curveEl);
+  if(chartAnim){
+    chartAnim = false;
+    try{
+      const len = curveEl.getTotalLength();
+      curveEl.animate([{strokeDasharray:len, strokeDashoffset:len},{strokeDasharray:len, strokeDashoffset:0}],{duration:900, easing:'cubic-bezier(.2,.7,.2,1)'});
+      if(areaEl) areaEl.animate([{opacity:0},{opacity:1}],{duration:900, delay:250, fill:'backwards'});
+    }catch(e){}
+  }
+
+  // current-alpha marker
+  let curX, curY;
+  if(isPolar){
+    const rC = computeAerodynamics({nacaCode:state.nacaCode, alphaDeg:state.alpha, Vinf:state.vinf, rho:state.rho, chord:state.chord, mu:MU_AIR});
+    curX = sx(rC.Cd); curY = sy(rC.Cl);
+  } else {
+    const idx = Math.round(state.alpha)-(-20);
+    curX = sx(sweepData.alphas[idx]); curY = sy(ys[idx]);
+  }
+  const pulse = el('circle',{cx:curX,cy:curY,r:9,fill:def.color,opacity:0.25,id:'chartPulse'});
+  chartSvg.appendChild(pulse);
+  chartSvg.appendChild(el('circle',{cx:curX,cy:curY,r:4.5,fill:def.color,stroke:'#0d131d','stroke-width':1.5}));
+
+  // hover crosshair (hidden until pointer moves) + click-to-set-alpha
+  const hoverLine = el('line',{x1:0,y1:CH_PAD.t,x2:0,y2:CH_H-CH_PAD.b, stroke:'rgba(255,255,255,0.25)', 'stroke-dasharray':'3 3', visibility:'hidden', id:'hoverLine'});
+  const hoverDot = el('circle',{r:4.5, fill:'#fff', visibility:'hidden', id:'hoverDot'});
+  const hoverText = el('text',{x:0,y:0, fill:'#eef2f8','font-size':11,'font-family':'JetBrains Mono, monospace', visibility:'hidden', id:'hoverText'});
+  chartSvg.appendChild(hoverLine); chartSvg.appendChild(hoverDot); chartSvg.appendChild(hoverText);
+
+  const hitRect = el('rect',{x:CH_PAD.l,y:CH_PAD.t,width:plotW,height:plotH, fill:'transparent'});
+  hitRect.addEventListener('mousemove', (ev)=>{
+    const rect = chartSvg.getBoundingClientRect();
+    const px = (ev.clientX-rect.left)/rect.width*CH_W;
+    const frac = Math.min(1, Math.max(0, (px-CH_PAD.l)/plotW));
+    const xi = isPolar ? interpNearestIndex(xs, xMin+frac*(xMax-xMin)) : Math.round(frac*(xs.length-1));
+    const xv = xs[xi], yv = ys[xi];
+    const hx = sx(xv), hy = sy(yv);
+    hoverLine.setAttribute('x1',hx); hoverLine.setAttribute('x2',hx); hoverLine.setAttribute('visibility','visible');
+    hoverDot.setAttribute('cx',hx); hoverDot.setAttribute('cy',hy); hoverDot.setAttribute('visibility','visible');
+    const label = isPolar ? `C_D ${xv.toFixed(4)} · C_L ${yv.toFixed(3)}` : `α ${xv.toFixed(0)}° · ${def.yLabel} ${def.fmt(yv)}`;
+    hoverText.textContent = label;
+    hoverText.setAttribute('x', Math.min(hx+10, CH_W-CH_PAD.r-140));
+    hoverText.setAttribute('y', CH_PAD.t+14);
+    hoverText.setAttribute('visibility','visible');
+  });
+  hitRect.addEventListener('mouseleave', ()=>{
+    hoverLine.setAttribute('visibility','hidden');
+    hoverDot.setAttribute('visibility','hidden');
+    hoverText.setAttribute('visibility','hidden');
+  });
+  hitRect.addEventListener('click', (ev)=>{
+    const rect = chartSvg.getBoundingClientRect();
+    const px = (ev.clientX-rect.left)/rect.width*CH_W;
+    const frac = Math.min(1, Math.max(0, (px-CH_PAD.l)/plotW));
+    if(isPolar){
+      const xi = interpNearestIndex(xs, xMin+frac*(xMax-xMin));
+      setAlpha(sweepData.alphas[xi]);
+    } else {
+      setAlpha(-20 + frac*44);
+    }
+  });
+  chartSvg.appendChild(hitRect);
+}
+function interpNearestIndex(arr, val){
+  let bi=0, bd=Infinity;
+  arr.forEach((v,i)=>{ const d=Math.abs(v-val); if(d<bd){bd=d; bi=i;} });
+  return bi;
+}
+function setAlpha(a){
+  a = Math.round(Math.min(24, Math.max(-20, a))*2)/2;
+  state.alpha = a;
+  document.getElementById('alpha').value = a;
+  refreshLabels();
+  recompute();
+}
+
+document.querySelectorAll('.tab').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('.tab').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    activeTab = btn.dataset.tab;
+    chartAnim = true;
+    renderChart();
+  });
+});
+
+/* =========================================================================
+   STATE + UI WIRING
+   ========================================================================= */
+const MU_AIR = 1.81e-5; // Pa.s, standard air viscosity (approx., mild temperature dependence ignored)
+const RHO_TABLE = {0:1.225, 1500:1.058, 3000:0.909, 6000:0.660, 9000:0.467};
+
+const state = {
+  nacaCode: 12,
+  alpha: 8,
+  vinf: 30,
+  rho: 1.225,
+  chord: 1.0,
+  span: 3.0,
+};
+
+const $ = id => document.getElementById(id);
+
+function fmt(x, d=3){ return (isFinite(x) ? x.toFixed(d) : '–'); }
+
+// Smoothly tweened HUD numbers (display only; the physics values are exact)
+const hudState = {};
+function setHud(id, val, d){
+  const host = $(id);
+  const node = host.querySelector('.n') || host;
+  const st = hudState[id] || (hudState[id] = {node, shown:0, target:0, d, bad:false, text:''});
+  st.target = val; st.d = d; st.bad = !isFinite(val);
+  if(st.bad){ st.node.textContent = '–'; st.text = '–'; }
+}
+function tickHud(dt){
+  for(const id in hudState){
+    const st = hudState[id]; if(st.bad) continue;
+    const diff = st.target - st.shown;
+    const eps = 0.5*Math.pow(10,-st.d);
+    st.shown = Math.abs(diff) < eps ? st.target : st.shown + diff*Math.min(1, dt*12);
+    const t = st.shown.toFixed(st.d);
+    if(t !== st.text){ st.node.textContent = t; st.text = t; }
+  }
+}
+
+function recompute(){
+  const result = computeAerodynamics({
+    nacaCode: state.nacaCode, alphaDeg: state.alpha, Vinf: state.vinf,
+    rho: state.rho, chord: state.chord, mu: MU_AIR
+  });
+  result.__flowAngle = state.alpha*Math.PI/180; // geometric alpha = flow angle relative to chord (rendering convenience)
+
+  // readouts
+  setHud('outCl', result.Cl, 3);
+  setHud('outCd', result.Cd, 4);
+  setHud('outLD', result.LD, 2);
+  setHud('outL', result.L, 1);
+  setHud('outD', result.D, 2);
+  $('outRe').textContent = result.Re.toExponential(2);
+  const totalL = result.L*state.span, totalD = result.D*state.span;
+  $('outTotal').innerHTML = `L = ${fmt(totalL,0)} N &nbsp;·&nbsp; D = ${fmt(totalD,1)} N`;
+
+  const stallFlag = $('stallFlag');
+  if (Math.abs(state.alpha) > result.alphaStallDeg){
+    stallFlag.classList.add('show');
+    stallFlag.textContent = `⚠ Past the estimated stall angle (≈ ${result.alphaStallDeg.toFixed(1)}° at this Reynolds number) — flow is separating; lift is falling off and drag is rising sharply.`;
+  } else {
+    stallFlag.classList.remove('show');
+  }
+
+  window.__lastResult = result;
+  document.querySelector('.viz-card').classList.toggle('stalled', !!result.isStalled);
+  try { renderViz(state, result); } catch(err){ console.error('renderViz failed:', err); }
+  try { sweepData = computeSweep(state); renderChart(); } catch(err){ console.error('chart update failed:', err); }
+}
+
+// --- input wiring ---
+function refreshLabels(){
+  $('alphaVal').textContent = state.alpha.toFixed(1)+'°';
+  $('vVal').textContent = state.vinf+' m/s';
+  $('chordVal').textContent = state.chord.toFixed(2)+' m';
+  $('spanVal').textContent = state.span.toFixed(1)+' m';
+}
+
+$('alpha').addEventListener('input', e=>{
+  if(sweeping) sweepBtn.click(); // manual drag overrides the auto-sweep
+  state.alpha=parseFloat(e.target.value); refreshLabels(); recompute();
+});
+$('vinf').addEventListener('input', e=>{ state.vinf=parseFloat(e.target.value); refreshLabels(); recompute(); });
+$('chord').addEventListener('input', e=>{ state.chord=parseFloat(e.target.value); refreshLabels(); recompute(); });
+$('span').addEventListener('input', e=>{ state.span=parseFloat(e.target.value); refreshLabels(); recompute(); });
+
+$('altitude').addEventListener('change', e=>{
+  const v = e.target.value;
+  if(v==='custom'){ $('rhoCustom').style.display='block'; state.rho=parseFloat($('rhoCustom').value); }
+  else { $('rhoCustom').style.display='none'; state.rho = RHO_TABLE[v]; }
+  recompute();
+});
+$('rhoCustom').addEventListener('input', e=>{ state.rho=parseFloat(e.target.value); recompute(); });
+
+function applyNacaCode(){
+  const raw = $('nacaCode').value.trim();
+  const num = parseInt(raw,10);
+  if(isFinite(num) && raw.length<=4 && num>=0 && num<=9999){
+    state.nacaCode = num;
+    chartAnim = true;
+    $('nacaCode').value = String(num).padStart(4,'0');
+    recompute();
+  }
+}
+$('applyNaca').addEventListener('click', applyNacaCode);
+$('nacaCode').addEventListener('keydown', e=>{ if(e.key==='Enter') applyNacaCode(); });
+document.querySelectorAll('[data-naca]').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    $('nacaCode').value = btn.dataset.naca;
+    applyNacaCode();
+  });
+});
+
+// --- continuous flow animation (independent of slider interaction) ---
+let animPhase = 0, lastFrameTime = null;
+function animateFlow(ts){
+  if(lastFrameTime===null) lastFrameTime = ts;
+  const dt = Math.min((ts-lastFrameTime)/1000, 0.1); // seconds, clamped for tab-switch pauses
+  lastFrameTime = ts;
+  const speedFactor = Math.max(0.15, flowSpeedRef/30); // faster V_inf -> visibly faster flow
+  animPhase = (animPhase + dt*speedFactor/2.0) % 1;
+
+  const layer = document.getElementById('particleLayer');
+  if(layer){
+    Array.from(layer.children).forEach(c=>{
+      const li = parseInt(c.getAttribute('data-line'),10);
+      const phase0 = parseFloat(c.getAttribute('data-phase'));
+      const pts = streamCache[li];
+      if(!pts || pts.length<2) return;
+      const off = parseFloat(c.getAttribute('data-off')||'0');
+      const fadeK = parseFloat(c.getAttribute('data-fade')||'1');
+      const t = (((animPhase + phase0 + off) % 1) + 1) % 1;
+      const idxF = t*(pts.length-1);
+      const i0 = Math.floor(idxF), i1 = Math.min(i0+1, pts.length-1);
+      const f = idxF - i0;
+      const x = pts[i0][0] + (pts[i1][0]-pts[i0][0])*f;
+      const y = pts[i0][1] + (pts[i1][1]-pts[i0][1])*f;
+      c.setAttribute('cx', x.toFixed(1));
+      c.setAttribute('cy', y.toFixed(1));
+      const edge = Math.min(t, 1-t); // fade in/out near path ends
+      c.setAttribute('opacity', (Math.min(1, edge*8)*fadeK).toFixed(2));
+    });
+  }
+
+  // turbulent wake eddies (stalled only)
+  const wl = document.getElementById('wakeLayer');
+  if(wl && wakeInfo){
+    wakeT = (wakeT + dt*0.5) % 1;
+    const w = wakeInfo, tt = ts/1000;
+    Array.from(wl.children).forEach(c=>{
+      const seed = parseFloat(c.getAttribute('data-seed'));
+      const t = (wakeT + seed) % 1;
+      const x = w.x + t*w.scale*0.95;
+      const y = w.y - w.sign*(6 + t*34*(0.5+w.exc)) + Math.sin(t*13 + seed*31 + tt*3)*(3 + 11*t);
+      c.setAttribute('cx', x.toFixed(1));
+      c.setAttribute('cy', y.toFixed(1));
+      c.setAttribute('r', (2.2 + t*7*(0.6+0.6*w.exc)).toFixed(1));
+      c.setAttribute('opacity', (Math.min(1,t*7)*(1-t)*0.5*(0.5+0.5*w.exc)).toFixed(2));
+    });
+  }
+
+  // chart marker pulse + tweened HUD numbers + visual-layer hook
+  const cp = document.getElementById('chartPulse');
+  if(cp){ const k = Math.sin(ts/260); cp.setAttribute('r', (9+3.5*k).toFixed(2)); cp.setAttribute('opacity', (0.2+0.12*k).toFixed(2)); }
+  tickHud(dt);
+  if(window.__frameHook) window.__frameHook(dt, ts);
+
+  requestAnimationFrame(animateFlow);
+}
+
+// --- angle-of-attack auto-sweep ---
+let sweeping = false, sweepDir = 1, lastSweepTime = null, sweepPos = state.alpha;
+const sweepBtn = $('sweepBtn'), sweepLabel = $('sweepLabel');
+function stepSweep(ts){
+  if(!sweeping) return;
+  if(lastSweepTime===null) lastSweepTime = ts;
+  const dt = Math.min((ts-lastSweepTime)/1000, 0.1);
+  lastSweepTime = ts;
+  const RATE = 7; // deg/sec
+  sweepPos += sweepDir*RATE*dt; // continuous accumulator -- never rounded, so small per-frame steps aren't lost
+  if(sweepPos >= 24){ sweepPos = 24; sweepDir = -1; }
+  if(sweepPos <= -20){ sweepPos = -20; sweepDir = 1; }
+  state.alpha = Math.round(sweepPos*2)/2; // rounded only for display/slider granularity
+  $('alpha').value = state.alpha;
+  refreshLabels();
+  recompute();
+  requestAnimationFrame(stepSweep);
+}
+sweepBtn.addEventListener('click', ()=>{
+  sweeping = !sweeping;
+  sweepBtn.classList.toggle('playing', sweeping);
+  sweepLabel.textContent = sweeping ? 'Pause sweep' : 'Play sweep';
+  if(sweeping){ sweepPos = state.alpha; lastSweepTime = null; requestAnimationFrame(stepSweep); }
+});
+
+// --- initial render ---
+refreshLabels();
+recompute();
+requestAnimationFrame(animateFlow);
+</script>
+<script>
+/* =========================================================================
+   MOTION & ATMOSPHERE  (visual layer only — reads state, never changes physics)
+   ========================================================================= */
+(function(){
+  'use strict';
+  const RM = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
+  const root = document.documentElement;
+
+  /* ---- title letter-by-letter reveal ---- */
+  (function(){
+    const h = document.getElementById('title'); if(!h) return;
+    const text = h.textContent; h.setAttribute('aria-label', text); h.textContent='';
+    let i=0;
+    text.split(' ').forEach(w=>{
+      const word=document.createElement('span'); word.className='word'; word.setAttribute('aria-hidden','true');
+      [...w].forEach(c=>{ const s=document.createElement('span'); s.className='ch'; s.textContent=c; s.style.setProperty('--i',i++); word.appendChild(s); });
+      h.appendChild(word);
+    });
+  })();
+
+  /* ---- hero airfoil sketch: NACA 2412 draws itself, streamlines flow around it ---- */
+  (function(){
+    const box = document.getElementById('heroArt'); if(!box || typeof naca4Geometry!=='function') return;
+    const g = naca4Geometry(2412, 48);
+    const pts = g.upper.slice().reverse().concat(g.lower.slice(1));
+    const S=270, ox=34, oy=76;
+    const d = pts.map((p,i)=>(i?'L':'M')+(ox+p.x*S).toFixed(1)+','+(oy-p.y*S).toFixed(1)).join(' ')+' Z';
+    let lines='';
+    [-56,-42,-29,-17,19,31,44,58].forEach((o,i)=>{
+      const k = 1-Math.abs(o)/70, bump = o<0 ? -20*k : 9*k, y = oy+o;
+      lines += '<path class="hl" style="animation-delay:'+(-i*0.37).toFixed(2)+'s" d="M0,'+y+' C80,'+y+' 100,'+(y+bump)+' 170,'+(y+bump)+' S 260,'+y+' 340,'+y+'"/>';
+    });
+    box.innerHTML = '<svg viewBox="0 0 340 150" width="340" height="150" aria-hidden="true">'+lines+'<g transform="rotate(-9 '+(ox+S*0.25)+' '+oy+')"><path class="hf" d="'+d+'"/></g></svg>';
+  })();
+
+  /* ---- scroll progress ---- */
+  const bar = document.getElementById('progress');
+  function onScroll(){
+    const max = document.documentElement.scrollHeight - window.innerHeight;
+    bar.style.transform = 'scaleX('+(max>0 ? clamp(window.scrollY/max,0,1) : 0)+')';
+  }
+  window.addEventListener('scroll', onScroll, {passive:true}); onScroll();
+
+  /* ---- reveal panels as they scroll in ---- */
+  (function(){
+    const items = document.querySelectorAll('.panel');
+    items.forEach((el,i)=>{ el.classList.add('rv'); el.style.setProperty('--d', (i%3)*0.08+'s'); });
+    if(RM || !('IntersectionObserver' in window)){ items.forEach(el=>el.classList.add('in')); return; }
+    const io = new IntersectionObserver(es=>{
+      es.forEach(e=>{ if(e.isIntersecting){ e.target.classList.add('in'); io.unobserve(e.target); } });
+    },{threshold:0.06, rootMargin:'0px 0px -3% 0px'});
+    items.forEach(el=>io.observe(el));
+  })();
+
+  /* ---- button ripples ---- */
+  document.addEventListener('click', e=>{
+    const b = e.target.closest('button'); if(!b) return;
+    const r=b.getBoundingClientRect(), size=Math.max(r.width,r.height)*2.2;
+    const s=document.createElement('span'); s.className='ripple';
+    s.style.width=s.style.height=size+'px';
+    s.style.left=(e.clientX-r.left-size/2)+'px'; s.style.top=(e.clientY-r.top-size/2)+'px';
+    b.appendChild(s); setTimeout(()=>s.remove(),650);
+  });
+
+  /* ---- pointer: panel spotlight, grid parallax, deflecting flow ---- */
+  const ptr = {x:-9999, y:-9999, on:false};
+  document.addEventListener('pointermove', e=>{
+    ptr.x=e.clientX; ptr.y=e.clientY; ptr.on=true;
+    const p = e.target.closest && e.target.closest('.panel');
+    if(p){ const r=p.getBoundingClientRect(); p.style.setProperty('--mx',(e.clientX-r.left)+'px'); p.style.setProperty('--my',(e.clientY-r.top)+'px'); }
+    if(!RM){
+      const nx=e.clientX/window.innerWidth-0.5, ny=e.clientY/window.innerHeight-0.5;
+      root.style.setProperty('--gx',(-nx*26).toFixed(1)+'px'); root.style.setProperty('--gy',(-ny*20).toFixed(1)+'px');
+      root.style.setProperty('--cx',e.clientX+'px'); root.style.setProperty('--cy',e.clientY+'px');
+    }
+  },{passive:true});
+  document.addEventListener('pointerleave', ()=>{ ptr.on=false; });
+
+  /* ---- live wind-tunnel background ----
+     Streak speed follows V∞, thinner air (higher altitude) means fewer streaks, the stream
+     tilts with α, and past stall the streaks turn warm and start to wobble. The cursor acts
+     like a small body in the flow: streaks bend around it. */
+  const cv = document.getElementById('flowfx');
+  const c = cv.getContext('2d');
+  const fdpr = Math.min(window.devicePixelRatio||1, 1.5);
+  let W=0, H=0, streaks=[], activeN=0, isLight=false, tick=0;
+  const BASE = ()=> (W<700 ? 46 : 100);
+  function mk(initial){
+    return {x: initial ? Math.random()*W : -Math.random()*300, y: Math.random()*H,
+      len: 50+Math.random()*190, v: 0.55+Math.random()*0.9, a: 0.07+Math.random()*0.26,
+      s: Math.random()*6.28, w: 0.8+Math.random()*1.3};
+  }
+  function resize(){
+    W=window.innerWidth; H=window.innerHeight;
+    cv.width=Math.round(W*fdpr); cv.height=Math.round(H*fdpr); c.setTransform(fdpr,0,0,fdpr,0,0);
+    const n=Math.round(BASE()*1.3);
+    streaks=Array.from({length:n},()=>mk(true));
+  }
+  window.addEventListener('resize', resize); resize();
+  function detectLight(){
+    isLight = !root.matches('[data-theme="dark"]') && window.matchMedia('(prefers-color-scheme: light)').matches;
+  }
+  detectLight();
+
+  let last = performance.now();
+  function draw(now){
+    const dt = Math.min((now-last)/1000, 0.1); last=now;
+    if((tick++ % 60)===0) detectLight();
+    const st = (typeof state!=='undefined') ? state : {vinf:30, alpha:8, rho:1.225};
+    const res = window.__lastResult;
+    const stalled = !!(res && res.isStalled);
+    const dens = clamp(st.rho/1.225, 0.22, 1.25);
+    const targetN = BASE()*dens;
+    activeN += (targetN-activeN)*Math.min(1,dt*2.2);
+    const n = Math.min(streaks.length, Math.round(activeN));
+    const speed = 80 + st.vinf*9;
+    const th = -st.alpha*Math.PI/180*0.5;
+    const dx = Math.cos(th), dy = Math.sin(th);
+    const rgb = stalled ? '255,138,92' : (isLight ? '38,86,190' : '140,190,255');
+    const gain = isLight ? 1.5 : 1;
+    const t = now/1000;
+    c.clearRect(0,0,W,H);
+    c.lineWidth = 1.2; c.lineCap='round';
+    const lenK = 0.5 + Math.min(st.vinf/120,1)*1.3;
+    for(let i=0;i<n;i++){
+      const s = streaks[i];
+      s.x += dx*speed*s.v*dt;
+      s.y += dy*speed*s.v*dt + (stalled ? Math.sin(t*7+s.s)*70*dt : 0);
+      if(s.x-s.len*lenK > W || s.y < -60 || s.y > H+60){
+        Object.assign(s, mk(false));
+        if(dy>0.02 && Math.random()<0.5){ s.x=Math.random()*W; s.y=-30; }
+        else if(dy<-0.02 && Math.random()<0.5){ s.x=Math.random()*W; s.y=H+30; }
+      }
+      let y = s.y;
+      if(ptr.on){
+        const ddx = s.x-ptr.x, ddy = y-ptr.y, dist = Math.hypot(ddx*0.55, ddy);
+        if(dist<150){ const f = (1-dist/150); y += Math.sign(ddy||1)*f*f*38; }
+      }
+      const len = s.len*lenK*(RM?0.6:1);
+      const g = c.createLinearGradient(s.x-len,0,s.x,0);
+      const a = Math.min(0.55, s.a*gain*(0.7+Math.min(speed/700,0.8)));
+      g.addColorStop(0,'rgba('+rgb+',0)'); g.addColorStop(1,'rgba('+rgb+','+a.toFixed(3)+')');
+      c.strokeStyle=g; c.lineWidth=s.w;
+      c.beginPath(); c.moveTo(s.x-len, y - dy*len); c.lineTo(s.x, y); c.stroke();
+    }
+    if(!RM) requestAnimationFrame(draw);
+  }
+  requestAnimationFrame(draw);
+  if(RM){ setInterval(()=>draw(performance.now()), 1500); }
+
+  /* ---- per-frame: keep slider fills in sync (sweep moves sliders programmatically) ---- */
+  const sliders = Array.from(document.querySelectorAll('input[type=range]'));
+  window.__frameHook = function(){
+    for(const s of sliders){
+      const p = (s.value-s.min)/(s.max-s.min)*100;
+      if(s._p!==p){ s._p=p; s.style.setProperty('--p', p+'%'); }
+    }
+  };
+})();
+</script>
+</body>
+</html>
